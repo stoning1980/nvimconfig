@@ -1,0 +1,102 @@
+-- Autocmds are automatically loaded on the VeryLazy event
+-- Default autocmds that are always set: https://github.com/LazyVim/LazyVim/blob/main/lua/lazyvim/config/autocmds.lua
+--
+-- Add any additional autocmds here
+-- with `vim.api.nvim_create_autocmd`
+--
+-- Or remove existing autocmds by their group name (which is prefixed with `lazyvim_` for the defaults)
+-- e.g. vim.api.nvim_del_augroup_by_name("lazyvim_wrap_spell")
+
+-- Make split lines and float/panel borders easier to see (tokyonight's default
+-- WinSeparator is very close to the background).
+local function brighten_separators()
+  local border = vim.api.nvim_get_hl(0, { name = "FloatBorder", link = false })
+  local fg = border.fg
+  if not fg then
+    border = vim.api.nvim_get_hl(0, { name = "Comment", link = false })
+    fg = border.fg
+  end
+  if not fg then
+    return
+  end
+
+  local sep = { fg = fg, bg = "NONE", bold = true }
+  vim.api.nvim_set_hl(0, "WinSeparator", sep)
+  vim.api.nvim_set_hl(0, "VertSplit", { link = "WinSeparator" })
+  vim.api.nvim_set_hl(0, "HorizSplit", { link = "WinSeparator" })
+  vim.api.nvim_set_hl(0, "SnacksWinSeparator", { link = "WinSeparator" })
+end
+
+vim.api.nvim_create_autocmd("ColorScheme", {
+  group = vim.api.nvim_create_augroup("user_bright_separators", { clear = true }),
+  callback = brighten_separators,
+})
+
+-- Colorscheme is already loaded by the time VeryLazy runs; apply once now too.
+brighten_separators()
+
+-- Auto-reload files changed outside Neovim. `autoread` lets Nvim pick up the
+-- new contents, but only when it actually checks the file -- so trigger a
+-- `checktime` on focus, buffer enter, and when idle, then announce reloads.
+vim.o.autoread = true
+
+local autoread = vim.api.nvim_create_augroup("user_autoread", { clear = true })
+
+vim.api.nvim_create_autocmd(
+  { "FocusGained", "BufEnter", "CursorHold", "CursorHoldI", "TermClose", "TermLeave" },
+  {
+    group = autoread,
+    callback = function()
+      -- Don't run checktime in command-line window or for non-file buffers.
+      if vim.fn.getcmdwintype() ~= "" then
+        return
+      end
+      if vim.bo.buftype ~= "" then
+        return
+      end
+      vim.cmd("checktime")
+    end,
+  }
+)
+
+vim.api.nvim_create_autocmd("FileChangedShellPost", {
+  group = autoread,
+  callback = function()
+    vim.notify("File changed on disk. Buffer reloaded.", vim.log.levels.INFO, { title = "autoread" })
+  end,
+})
+
+-- :FileAbsolutePath -- copy the current file's absolute path to the system
+-- clipboard (the `+` register).
+vim.api.nvim_create_user_command("FileAbsolutePath", function()
+  local path = vim.api.nvim_buf_get_name(0)
+  if path == "" then
+    vim.notify("No file associated with the current buffer", vim.log.levels.WARN, { title = "FileAbsolutePath" })
+    return
+  end
+  path = vim.fn.fnamemodify(path, ":p")
+  vim.fn.setreg("+", path)
+  vim.notify("Copied to clipboard:\n" .. path, vim.log.levels.INFO, { title = "FileAbsolutePath" })
+end, { desc = "Copy the current file's absolute path to the system clipboard" })
+
+-- :FileRepoPath -- copy the current file's path relative to the project root
+-- (the git repo root, or the nearest .git/package.json/etc.) to the system
+-- clipboard. Falls back to the absolute path when no root can be found.
+vim.api.nvim_create_user_command("FileRepoPath", function()
+  local abs = vim.api.nvim_buf_get_name(0)
+  if abs == "" then
+    vim.notify("No file associated with the current buffer", vim.log.levels.WARN, { title = "FileRepoPath" })
+    return
+  end
+  abs = vim.fn.fnamemodify(abs, ":p")
+  local root = vim.fs.root(abs, { ".git", ".hg", ".svn" }) or vim.fn.getcwd()
+  local rel = abs
+  if root and root ~= "" then
+    root = vim.fn.fnamemodify(root, ":p"):gsub("/$", "")
+    if abs:sub(1, #root + 1) == root .. "/" then
+      rel = abs:sub(#root + 2)
+    end
+  end
+  vim.fn.setreg("+", rel)
+  vim.notify("Copied to clipboard:\n" .. rel, vim.log.levels.INFO, { title = "FileRepoPath" })
+end, { desc = "Copy the current file's path relative to the repo/project root to the system clipboard" })

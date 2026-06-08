@@ -1,0 +1,25 @@
+return {
+  dir = vim.fn.stdpath("config") .. "/dev/claudeide.nvim",
+  name = "claudeide.nvim",
+  event = "VeryLazy",
+  cmd = {
+    "ClaudeIde",
+    "ClaudeIdeStart",
+    "ClaudeIdeStop",
+    "ClaudeIdeStatus",
+    "ClaudeIdeSend",
+    "ClaudeIdeAdd",
+    "ClaudeIdeDiffAccept",
+    "ClaudeIdeDiffDeny",
+  },
+  keys = {
+    { "<leader>a", nil, desc = "AI/Claude IDE" },
+    { "<leader>ai", "<cmd>ClaudeIdeStatus<cr>", desc = "Claude IDE status" },
+    { "<leader>ab", "<cmd>ClaudeIdeAdd %<cr>", desc = "Add current buffer" },
+    { "<leader>as", ":<C-u>ClaudeIdeSend<cr>", mode = "v", desc = "Send selection to Claude" },
+    { "<F6>", ":<C-u>ClaudeIdeSend<cr>", mode = "v", desc = "Send selection to Claude" },
+    { "<leader>aa", "<cmd>ClaudeIdeDiffAccept<cr>", desc = "Accept diff" },
+    { "<leader>ad", "<cmd>ClaudeIdeDiffDeny<cr>", desc = "Deny diff" },
+  },
+  opts = {},
+}
