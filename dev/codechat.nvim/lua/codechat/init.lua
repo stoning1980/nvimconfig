@@ -157,6 +157,22 @@ local function send_context(name, selection)
         end_line = selection.end_line,
       }),
       on_submit = deliver,
+      on_send = function(comment)
+        local send_cfg = vim.tbl_extend("force", cfg, { auto_submit = false })
+        local ref = reference({
+          relpath = util.relpath(selection.path),
+          start_line = selection.start_line,
+          end_line = selection.end_line,
+        })
+        local text = (comment ~= "") and (ref .. "\n" .. comment) or ref
+        terminal.send(name, send_cfg, text, false)
+        vim.schedule(function()
+          if vim.api.nvim_win_is_valid(origin) then
+            pcall(vim.api.nvim_set_current_win, origin)
+          end
+          vim.cmd("stopinsert")
+        end)
+      end,
     })
   else
     deliver("")

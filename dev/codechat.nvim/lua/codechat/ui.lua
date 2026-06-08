@@ -6,7 +6,7 @@ local M = {}
 
 --- Open a comment input window.
 ---@param cfg table input config { width, height }
----@param opts table { title?: string, prefill?: string, on_submit: fun(text:string), on_cancel?: fun() }
+---@param opts table { title?: string, prefill?: string, on_submit: fun(text:string), on_send?: fun(text:string), on_cancel?: fun() }
 function M.input(cfg, opts)
   local ok, s = pcall(require, "snacks")
   if not ok then
@@ -15,27 +15,46 @@ function M.input(cfg, opts)
   end
 
   local win
-  local submitted = false
+  local done = false
 
-  local function submit()
-    if submitted then
-      return
-    end
-    submitted = true
+  local function get_text()
     local lines = vim.api.nvim_buf_get_lines(win.buf, 0, -1, false)
-    local text = vim.trim(table.concat(lines, "\n"))
+    return vim.trim(table.concat(lines, "\n"))
+  end
+
+  local function close()
     win:close()
     vim.cmd("stopinsert")
+  end
+
+  local function submit()
+    if done then
+      return
+    end
+    done = true
+    local text = get_text()
+    close()
     opts.on_submit(text)
   end
 
-  local function cancel()
-    if submitted then
+  local function send()
+    if done then
       return
     end
-    submitted = true
-    win:close()
-    vim.cmd("stopinsert")
+    done = true
+    local text = get_text()
+    close()
+    if opts.on_send then
+      opts.on_send(text)
+    end
+  end
+
+  local function cancel()
+    if done then
+      return
+    end
+    done = true
+    close()
     if opts.on_cancel then
       opts.on_cancel()
     end
@@ -48,18 +67,18 @@ function M.input(cfg, opts)
     border = "rounded",
     title = " " .. (opts.title or "Message") .. " ",
     title_pos = "center",
-    footer = " Enter = send   ⌥+Enter = new line   Esc = cancel ",
+    footer = " Enter = submit   ^S = send   ⌥+Enter = new line   Esc = cancel ",
     footer_pos = "center",
     enter = true,
     bo = { filetype = "markdown", modifiable = true, buftype = "nofile" },
     wo = { wrap = true, linebreak = true },
   })
 
-  -- Mac-style editing: Enter submits, Option/Alt+Enter inserts a new line.
   vim.keymap.set("i", "<CR>", submit, { buffer = win.buf, nowait = true })
   vim.keymap.set("n", "<CR>", submit, { buffer = win.buf, nowait = true })
   vim.keymap.set("i", "<M-CR>", "<CR>", { buffer = win.buf, nowait = true, remap = false })
-  vim.keymap.set("i", "<C-s>", submit, { buffer = win.buf, nowait = true })
+  vim.keymap.set("i", "<C-s>", send, { buffer = win.buf, nowait = true })
+  vim.keymap.set("n", "<C-s>", send, { buffer = win.buf, nowait = true })
   vim.keymap.set("n", "<Esc>", cancel, { buffer = win.buf, nowait = true })
   vim.keymap.set("n", "q", cancel, { buffer = win.buf, nowait = true })
 
