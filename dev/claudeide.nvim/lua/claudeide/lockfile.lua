@@ -116,7 +116,7 @@ function M.write(port, auth_token)
   local data = {
     pid = vim.fn.getpid(),
     workspaceFolders = { vim.fn.getcwd() },
-    ideName = "Neovim",
+    ideName = "TikTok VimPlugin",
     transport = "ws",
     authToken = auth_token,
   }
