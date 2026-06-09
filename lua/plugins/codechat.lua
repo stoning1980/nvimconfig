@@ -55,6 +55,28 @@ return {
     --   2. ttadk Cursor  -- Cursor CLI via the `ttadk` wrapper
     --   3. Claude        -- the plain `claude` binary (from config.lua defaults)
     --   4. Cursor        -- the plain `cursor-agent` binary (from defaults)
+    -- ── Agent parameter reference ─────────────────────────────────────
+    -- label          : display name shown in the :CodeChatPick picker.
+    -- command_prefix : Vim command namespace; generates four commands:
+    --                  <prefix>, <prefix>Send, <prefix>SendFile, <prefix>Stop.
+    -- command        : how to launch the agent. Accepts three forms:
+    --                  * "binary"              – plain executable (no spaces)
+    --                  * "cmd --flag -x val"   – shell command line (has spaces)
+    --                  * { "cmd", "--flag" }    – argv list (no shell involved)
+    -- args           : extra arguments appended to `command` (list of strings).
+    -- setup          : shell steps executed BEFORE `command`, joined with `&&`.
+    --                  string or list, e.g. { "cd ~/repo", "nvm use 22" }.
+    -- login          : if true, run via interactive login shell (`$SHELL -lic`)
+    --                  so rc files are sourced. REQUIRED when `setup` calls a
+    --                  shell function (nvm, conda, asdf, etc.).
+    -- login_shell    : override the login shell (default: vim.o.shell / $SHELL).
+    -- shell          : force shell execution even for a single-token command.
+    -- env            : { VAR = "value" } pairs added to the agent's environment.
+    -- fallbacks      : list of alternative binary names tried when the primary
+    --                  `command` is not found on PATH (single-token only).
+    -- order          : position in the picker (lower = higher). Agents without
+    --                  `order` sort after numbered ones, alphabetically.
+    -- ────────────────────────────────────────────────────────────────────
     agents = {
       ttadk_claude = {
         label = "ttadk Claude",
@@ -76,7 +98,12 @@ return {
       -- Pure `claude` / `cursor-agent` binaries (launched directly). Command,
       -- labels and fallbacks come from codechat's defaults in config.lua; we
       -- only set the picker order here.
-      claude = { order = 3 },
+      claude = {
+        order = 3,
+        login = true,
+        setup = { "nvm use 22" },
+        command = "cl --dangerously-skip-permissions",
+      },
       cursor = { order = 4 },
     },
   },
