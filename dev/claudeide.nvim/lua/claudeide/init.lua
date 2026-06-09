@@ -19,6 +19,7 @@ function M.start()
   if M.started then
     return true
   end
+  lockfile.remove_stale()
   local auth_token = util.uuid()
   local port, err = server.start({
     auth_token = auth_token,
@@ -47,14 +48,26 @@ function M.start()
   return true
 end
 
---- Stop the server, remove the lock file, and tear down selection tracking.
-function M.stop()
+--- Stop the server, remove lock files, and tear down all plugin state.
+---@param opts? { silent?: boolean }
+function M.stop(opts)
+  opts = opts or {}
+  if not M.started and not server.is_running() then
+    return
+  end
+
+  -- Reject pending diffs before closing sockets so the CLI does not hang.
+  diff.teardown()
   selection.teardown()
   lockfile.remove()
   server.stop()
+
   M.started = false
   M.port = nil
-  util.info("stopped")
+
+  if not opts.silent then
+    util.info("stopped")
+  end
 end
 
 --- Ensure the server is running and tell the user how to connect.
@@ -125,7 +138,7 @@ function M.setup(opts)
   vim.api.nvim_create_autocmd("VimLeavePre", {
     group = vim.api.nvim_create_augroup("ClaudeIdeCleanup", { clear = true }),
     callback = function()
-      M.stop()
+      pcall(M.stop, { silent = true })
     end,
   })
 

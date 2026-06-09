@@ -17,6 +17,95 @@ end
 
 M.current = nil ---@type string|nil current lock file path
 
+---@param pid integer
+---@return boolean
+local function is_process_alive(pid)
+  if not pid or pid <= 0 then
+    return false
+  end
+  if pid == vim.fn.getpid() then
+    return true
+  end
+  return pcall(uv.kill, pid, 0)
+end
+
+---@param path string
+---@return table|nil
+local function read_lock(path)
+  local fd, err = uv.fs_open(path, "r", 0)
+  if not fd then
+    return nil
+  end
+  local stat = uv.fs_fstat(fd)
+  local size = stat and stat.size or 0
+  if size <= 0 or size > 4096 then
+    uv.fs_close(fd)
+    return nil
+  end
+  local data = uv.fs_read(fd, size)
+  uv.fs_close(fd)
+  if not data then
+    return nil
+  end
+  local ok, decoded = util.json_decode(data)
+  if not ok or type(decoded) ~= "table" then
+    return nil
+  end
+  return decoded
+end
+
+--- Remove lock files left behind by dead Neovim instances (or orphaned .tmp files).
+function M.remove_stale()
+  local dir = lock_dir()
+  local names = uv.fs_scandir(dir)
+  if not names then
+    return
+  end
+  while true do
+    local name, typ = uv.fs_scandir_next(names)
+    if not name then
+      break
+    end
+    if typ == "file" and (name:match("%.lock$") or name:match("%.lock%.tmp$")) then
+      local path = dir .. "/" .. name
+      if name:match("%.tmp$") then
+        pcall(uv.fs_unlink, path)
+      else
+        local lock = read_lock(path)
+        if not lock or not is_process_alive(lock.pid) then
+          pcall(uv.fs_unlink, path)
+        end
+      end
+    end
+  end
+end
+
+--- Remove every lock file owned by the current Neovim process.
+function M.remove_owned()
+  local pid = vim.fn.getpid()
+  local dir = lock_dir()
+  local names = uv.fs_scandir(dir)
+  if names then
+    while true do
+      local name, typ = uv.fs_scandir_next(names)
+      if not name then
+        break
+      end
+      if typ == "file" and name:match("%.lock$") then
+        local path = dir .. "/" .. name
+        local lock = read_lock(path)
+        if lock and lock.pid == pid then
+          pcall(uv.fs_unlink, path)
+        end
+      end
+    end
+  end
+  if M.current then
+    pcall(uv.fs_unlink, M.current)
+    M.current = nil
+  end
+end
+
 --- Write the lock file for the given port and auth token.
 ---@param port integer
 ---@param auth_token string
@@ -53,12 +142,9 @@ function M.write(port, auth_token)
   return true
 end
 
---- Remove the current lock file (if any).
+--- Remove all lock files owned by this Neovim instance.
 function M.remove()
-  if M.current then
-    pcall(uv.fs_unlink, M.current)
-    M.current = nil
-  end
+  M.remove_owned()
 end
 
 return M

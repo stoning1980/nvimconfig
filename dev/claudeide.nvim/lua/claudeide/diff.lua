@@ -151,4 +151,13 @@ function M.has_pending()
   return M.pending ~= nil
 end
 
+--- Reject any open diff and remove watchers (used on shutdown).
+function M.teardown()
+  pcall(vim.api.nvim_del_augroup_by_name, "ClaudeIdeDiffWatch")
+  if M.pending and not M.pending.answered then
+    reply("DIFF_REJECTED")
+  end
+  M.pending = nil
+end
+
 return M

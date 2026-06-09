@@ -214,6 +214,7 @@ end
 
 function M.stop()
   for _, client in pairs(M.state.clients) do
+    safe_write(client, frame.close())
     close_client(client)
   end
   M.state.clients = {}
@@ -225,6 +226,7 @@ function M.stop()
   M.state.server = nil
   M.state.port = nil
   M.state.auth_token = nil
+  M.state.on_message = nil
 end
 
 return M
