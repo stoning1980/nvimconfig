@@ -95,16 +95,22 @@ return {
         setup = { "nvm use 22" },
         command = { "ttadk", "code", "-t", "cursor-cli" },
       },
-      -- Pure `claude` / `cursor-agent` binaries (launched directly). Command,
-      -- labels and fallbacks come from codechat's defaults in config.lua; we
-      -- only set the picker order here.
       claude = {
+        label = "Claude",
+        command_prefix = "ClaudeChat",
         order = 3,
         login = true,
         setup = { "nvm use 22" },
         command = "cl --dangerously-skip-permissions",
+        fallbacks = { "claude" },
       },
-      cursor = { order = 4 },
+      cursor = {
+        label = "Cursor",
+        command_prefix = "CursorChat",
+        order = 4,
+        command = vim.fn.expand("~/.local/bin/cursor-agent"),
+        fallbacks = { "cursor-agent", "agent" },
+      },
     },
   },
 }
