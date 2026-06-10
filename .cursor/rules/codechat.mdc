@@ -1,0 +1,22 @@
+---
+description: Rules for working on the codechat.nvim AI terminal driver plugin
+globs: dev/codechat.nvim/**/*.lua
+---
+
+# codechat.nvim Development Rules
+
+## Architecture
+Terminal driver that launches and injects context into CLI coding agents (Claude, Cursor, ttadk wrappers) running inside Snacks terminals.
+
+## Key Subsystems
+- `lua/codechat/terminal.lua` — Terminal lifecycle management, bracketed paste input injection
+- `lua/codechat/ui.lua` — Comment popup (Snacks float) shown before sending context
+- `lua/codechat/config.lua` — Agent registry with command, setup steps, login shell, fallbacks
+
+## Constraints
+- Depends on folke/snacks.nvim for terminal and floating window APIs
+- Supports multiple agent backends with configurable launch commands
+- Input injection uses bracketed paste sequences for reliable multi-line input
+- Login shell mode (`$SHELL -lic`) required when setup uses shell functions (nvm, conda)
+- Agent picker persists choice across Neovim restarts
+- Terminal pre-warming: agent can launch while user types their comment
