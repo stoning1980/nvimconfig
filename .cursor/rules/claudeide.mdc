@@ -1,0 +1,26 @@
+---
+description: Rules for working on the claudeide.nvim MCP server plugin
+globs: dev/claudeide.nvim/**/*.lua
+---
+
+# claudeide.nvim Development Rules
+
+## Architecture
+This is a pure-Lua WebSocket server implementing the Model Context Protocol (MCP).
+It makes Neovim act as an IDE server so Claude CLI can connect via `/ide`.
+
+## Key Subsystems
+- `lua/claudeide/server/` — TCP, HTTP upgrade, WebSocket frames (vim.uv based)
+- `lua/claudeide/mcp.lua` — JSON-RPC 2.0 message routing
+- `lua/claudeide/tools.lua` — MCP tool implementations (openFile, openDiff)
+- `lua/claudeide/diff.lua` — Blocking diff UI with accept/deny
+- `lua/claudeide/lockfile.lua` — Lock file management at ~/.claude/ide/
+- `lua/claudeide/selection.lua` — Selection change notification broadcasting
+
+## Constraints
+- No external dependencies — all networking is via vim.uv (libuv bindings)
+- Protocol version: 2025-03-26
+- JSON-RPC 2.0 over WebSocket (binary frames, not text)
+- Lock file ideName: "TikTok VimPlugin"
+- Must handle multiple simultaneous client connections
+- All blocking operations (like diff accept/deny) use coroutines or callbacks, never synchronous waits

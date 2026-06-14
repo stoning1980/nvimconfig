@@ -1,0 +1,22 @@
+---
+description: General rules for working in this Neovim config repository
+globs: **/*.lua
+---
+
+# Neovim Config Rules
+
+## Lua Style
+- 2-space indentation, 120 column width (enforced by stylua)
+- Format with `stylua lua/`
+- Target Neovim 0.10+ APIs (use `vim.uv` not `vim.loop`)
+
+## LazyVim Conventions
+- Plugin specs go in `lua/plugins/` — each file returns a spec table or array of specs
+- Config files in `lua/config/` are auto-loaded by LazyVim (options, keymaps, autocmds)
+- Leader key is `,` (comma)
+
+## Custom Plugins
+- Located in `dev/` directory, loaded via `dir = vim.fn.stdpath("config") .. "/dev/..."` specs
+- Use `event = "VeryLazy"` plus explicit `cmd` and `keys` tables for deferred loading
+- Zero external Lua dependencies — pure Lua + Neovim built-in APIs only
+- codechat.nvim is the exception: depends on folke/snacks.nvim
