@@ -220,6 +220,9 @@ local function inject(name, cfg, text)
   if cfg.bracketed_paste then
     payload = "\27[200~" .. text .. "\27[201~"
   end
+  if cfg.newline_before then
+    payload = "\n" .. payload
+  end
   vim.fn.chansend(job, payload)
 
   -- Submit as a SEPARATE, slightly-delayed keystroke. TUIs debounce pasted

@@ -158,7 +158,7 @@ local function send_context(name, selection)
       }),
       on_submit = deliver,
       on_send = function(comment)
-        local send_cfg = vim.tbl_extend("force", cfg, { auto_submit = false })
+        local send_cfg = vim.tbl_extend("force", cfg, { auto_submit = false, newline_before = true })
         local ref = reference({
           relpath = util.relpath(selection.path),
           start_line = selection.start_line,
