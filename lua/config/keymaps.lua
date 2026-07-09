@@ -20,6 +20,10 @@ end, { desc = "Search exact word only (Git tracked)" })
 
 local map = vim.keymap.set
 
+-- Register the `:Pdf` (HEAD vs previous commit) and `:CodeReview`
+-- (HEAD vs local/remote branch, with branch-name completion) commands.
+require("config.git_diff").setup()
+
 -- F4: Toggle Diffview (Opens git index diff if closed, closes all diff tabs if open)
 map("n", "<F3>", function()
   local lib = require("diffview.lib")
@@ -86,19 +90,19 @@ end
 --   if not path then
 --     return
 --   end
--- 
+--
 --   vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<ESC>", true, false, true), "x", true)
--- 
+--
 --   local start_line = vim.api.nvim_buf_get_mark(0, "<")[1]
 --   local end_line = vim.api.nvim_buf_get_mark(0, ">")[1]
--- 
+--
 --   local result_text = path
 --   if start_line == end_line then
 --     result_text = string.format("%s, line %d", path, start_line)
 --   else
 --     result_text = string.format("%s, line %d-%d", path, start_line, end_line)
 --   end
--- 
+--
 --   vim.fn.setreg("+", result_text)
 --   vim.notify("Copied: " .. result_text, vim.log.levels.INFO)
 -- end, { desc = "Copy root relative path with lines" })
