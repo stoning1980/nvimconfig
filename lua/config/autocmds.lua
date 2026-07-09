@@ -35,6 +35,30 @@ vim.api.nvim_create_autocmd("ColorScheme", {
 -- Colorscheme is already loaded by the time VeryLazy runs; apply once now too.
 brighten_separators()
 
+-- Make diff highlights (Diffview, :diffthis, gitsigns preview) much more
+-- visible: stronger line backgrounds plus a bright "changed word" color so the
+-- exact edits inside a line stand out.
+local function improve_diff_colors()
+  -- Added / deleted / changed line backgrounds.
+  vim.api.nvim_set_hl(0, "DiffAdd", { bg = "#1f3b2b", fg = "NONE" })
+  vim.api.nvim_set_hl(0, "DiffDelete", { bg = "#48232b", fg = "NONE" })
+  vim.api.nvim_set_hl(0, "DiffChange", { bg = "#25324d", fg = "NONE" })
+  -- The actual changed text within a line (the most important part).
+  vim.api.nvim_set_hl(0, "DiffText", { bg = "#3f6d9c", fg = "NONE", bold = true })
+
+  -- Diffview's own enhanced groups: emphasize changed regions, dim the rest.
+  vim.api.nvim_set_hl(0, "DiffviewDiffAddAsDelete", { bg = "#48232b" })
+  vim.api.nvim_set_hl(0, "DiffAddText", { bg = "#2f6b3a", fg = "NONE", bold = true })
+  vim.api.nvim_set_hl(0, "DiffDeleteText", { bg = "#8a2f3a", fg = "NONE", bold = true })
+end
+
+vim.api.nvim_create_autocmd("ColorScheme", {
+  group = vim.api.nvim_create_augroup("user_diff_colors", { clear = true }),
+  callback = improve_diff_colors,
+})
+
+improve_diff_colors()
+
 -- Auto-reload files changed outside Neovim. `autoread` lets Nvim pick up the
 -- new contents, but only when it actually checks the file -- so trigger a
 -- `checktime` on focus, buffer enter, and when idle, then announce reloads.
@@ -42,22 +66,19 @@ vim.o.autoread = true
 
 local autoread = vim.api.nvim_create_augroup("user_autoread", { clear = true })
 
-vim.api.nvim_create_autocmd(
-  { "FocusGained", "BufEnter", "CursorHold", "CursorHoldI", "TermClose", "TermLeave" },
-  {
-    group = autoread,
-    callback = function()
-      -- Don't run checktime in command-line window or for non-file buffers.
-      if vim.fn.getcmdwintype() ~= "" then
-        return
-      end
-      if vim.bo.buftype ~= "" then
-        return
-      end
-      vim.cmd("checktime")
-    end,
-  }
-)
+vim.api.nvim_create_autocmd({ "FocusGained", "BufEnter", "CursorHold", "CursorHoldI", "TermClose", "TermLeave" }, {
+  group = autoread,
+  callback = function()
+    -- Don't run checktime in command-line window or for non-file buffers.
+    if vim.fn.getcmdwintype() ~= "" then
+      return
+    end
+    if vim.bo.buftype ~= "" then
+      return
+    end
+    vim.cmd("checktime")
+  end,
+})
 
 vim.api.nvim_create_autocmd("FileChangedShellPost", {
   group = autoread,

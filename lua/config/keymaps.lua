@@ -1,6 +1,22 @@
 -- Keymaps are automatically loaded on the VeryLazy event
 -- Default keymaps that are always set: https://github.com/LazyVim/LazyVim/blob/main/lua/lazyvim/config/keymaps.lua
 -- Add any additional keymaps here
+--
+-- ┌─ Function key cheatsheet (custom mappings in this file) ─────────────┐
+-- │ F1  : n → toggle Diffview layout (left/right ↔ top/bottom)          │
+-- │ F2  : n → git grep string  |  v → git grep exact word (selection)    │
+-- │ F3  : n → toggle Diffview (git index diff)                           │
+-- │ F4  : n → toggle Diffview file panel                                 │
+-- │ F5  : n → find git files   |  v → find git files by selection        │
+-- │ F6  : (unmapped — commented-out copy-relative-path helper)           │
+-- │ F7  : (unmapped)                                                     │
+-- │ F8  : n → document symbols of current file (LSP / Treesitter)        │
+-- │ F9  : (unmapped)                                                     │
+-- │ F10 : (unmapped)                                                     │
+-- │ F11 : n/t → toggle left Snacks terminal                             │
+-- │ F12 : n → resume last Snacks picker search                           │
+-- └─────────────────────────────────────────────────────────────────────┘
+--
 -- <F2> ----------------------------------------------------------------
 vim.keymap.set("n", "<F2>", function()
   Snacks.picker.git_grep()
@@ -19,6 +35,18 @@ vim.keymap.set("v", "<F2>", function()
 end, { desc = "Search exact word only (Git tracked)" })
 
 local map = vim.keymap.set
+
+-- F1: Toggle the current Diffview's layout between side-by-side (left/right)
+-- and stacked (top/bottom) — handy for long-line diffs. No-op when no
+-- Diffview is open.
+map("n", "<F1>", function()
+  local ok, lib = pcall(require, "diffview.lib")
+  if not ok or not lib.get_current_view() then
+    vim.notify("No Diffview open", vim.log.levels.INFO, { title = "Diffview" })
+    return
+  end
+  require("diffview.actions").cycle_layout()
+end, { desc = "Toggle Diffview Layout (H/V)" })
 
 -- Register the `:Pdf` (HEAD vs previous commit) and `:CodeReview`
 -- (HEAD vs local/remote branch, with branch-name completion) commands.
