@@ -6,8 +6,8 @@
 -- │ F1      : n → toggle Diffview (git index diff)                       │
 -- │ F2      : n → toggle Diffview file panel                             │
 -- │ S-F1/F2 : n → toggle Diffview layout (side-by-side ↔ stacked)       │
--- │ F3/S-F3 : n → next / previous diff hunk (Diffview only; error else)  │
--- │ C-F3    : n → next file entry (Diffview only)                        │
+-- │ F3      : n → next diff hunk (Diffview only; error else)             │
+-- │ S-F3    : n → next file entry (Diffview only)                        │
 -- │ F4      : n → git grep string  |  v → git grep exact word (sel.)     │
 -- │ F5      : n → find git files   |  v → find git files by selection    │
 -- │ F6      : v → send selection to Claude IDE (claudeide.lua)           │
@@ -97,16 +97,8 @@ map("n", "<F3>", function()
   goto_diff_hunk("]c")
 end, { desc = "Next Diff Hunk (Diffview)" })
 
--- Shift+F3: previous diff hunk. Terminals may emit shifted F3 as <F15>.
-map("n", "<S-F3>", function()
-  goto_diff_hunk("[c")
-end, { desc = "Previous Diff Hunk (Diffview)" })
-map("n", "<F15>", function()
-  goto_diff_hunk("[c")
-end, { desc = "Previous Diff Hunk (Diffview)" })
-
--- Ctrl+F3: jump to the next file entry in the Diffview (vs. next hunk on F3).
--- Terminals may emit Ctrl+F3 as <F27>. Only meaningful inside a Diffview.
+-- Shift+F3: jump to the next file entry in the Diffview (vs. next hunk on F3).
+-- Terminals may emit shifted F3 as <F15>. Only meaningful inside a Diffview.
 local function next_diff_file()
   if not diffview_view() then
     vim.notify("Not in a Diffview", vim.log.levels.ERROR, { title = "Diffview" })
@@ -114,8 +106,8 @@ local function next_diff_file()
   end
   require("diffview.actions").select_next_entry()
 end
-map("n", "<C-F3>", next_diff_file, { desc = "Next File (Diffview)" })
-map("n", "<F27>", next_diff_file, { desc = "Next File (Diffview)" })
+map("n", "<S-F3>", next_diff_file, { desc = "Next File (Diffview)" })
+map("n", "<F15>", next_diff_file, { desc = "Next File (Diffview)" })
 
 -- F4: git grep. Normal → search string; visual → exact word from selection.
 map("n", "<F4>", function()
