@@ -77,17 +77,25 @@ require("config.git_diff").setup()
 
 -- F3 / Shift+F3: Jump to next / previous diff hunk — only inside a Diffview.
 -- The ]c / [c motions only work in a diff-mode window, so if focus is on the
--- file panel (or anywhere else) we jump to the main diff window first.
+-- file panel (or anywhere else) we jump into a diff window first. Prefer the
+-- left panel (`a`) — get_main_win() returns the right panel (`b`), but the left
+-- reads more naturally right after the file panel; fall back to the main win
+-- when the left side is null (e.g. added files) or otherwise unavailable.
 local function goto_diff_hunk(motion)
   local view = diffview_view()
   if not view then
     vim.notify("Not in a Diffview", vim.log.levels.ERROR, { title = "Diffview" })
     return
   end
-  local ok, win = pcall(function()
-    return view.cur_layout:get_main_win()
-  end)
-  if ok and win and win.id and vim.api.nvim_win_is_valid(win.id) then
+  local layout = view.cur_layout
+  local win = layout and layout.a
+  if not (win and win.id and vim.api.nvim_win_is_valid(win.id)) then
+    local ok, main = pcall(function()
+      return layout:get_main_win()
+    end)
+    win = ok and main or nil
+  end
+  if win and win.id and vim.api.nvim_win_is_valid(win.id) then
     vim.api.nvim_set_current_win(win.id)
   end
   vim.cmd("normal! " .. motion)
