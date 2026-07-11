@@ -31,7 +31,7 @@ end
 
 -- Toggle Diffview: open git index diff if closed, close all diff tabs if open.
 -- When nvim was launched from the terminal wrapper purely to review a diff
--- (g:dv_from_terminal set by dvpdf/dvreview/dvlc), closing the Diffview should
+-- (g:dv_from_terminal set by pdf/codereview/dvlc), closing the Diffview should
 -- quit nvim entirely rather than drop into an empty session.
 local function toggle_diffview()
   if diffview_view() then
