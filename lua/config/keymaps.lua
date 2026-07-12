@@ -13,7 +13,8 @@
 -- │ F6      : v → send selection to Claude IDE (claudeide.lua)           │
 -- │ F7      : n → send file / v → send selection to AI agent (codechat)  │
 -- │ F8      : n → document symbols of current file (LSP / Treesitter)    │
--- │ F9/F10  : (unmapped)                                                 │
+-- │ F9      : n → toggle git annotate panel (per-line author/date)      │
+-- │ F10     : (unmapped)                                                 │
 -- │ F11     : n → copy repo-rel path | v → repo-rel path + line range    │
 -- │ S-F11   : n → copy-path menu (abs / rel / name / dir / ~)            │
 -- │ F12     : n → resume last Snacks picker search                       │
@@ -189,6 +190,13 @@ end
 vim.keymap.set("n", "<F8>", function()
   require("config.ts_symbols").pick()
 end, { desc = "Document Symbols (Current File)" })
+
+-- F9: toggle an Android Studio / JetBrains style "Annotate" panel — a
+-- scroll-bound left split showing author + date for every line. Press q inside
+-- the panel (or F9 again) to close it.
+map("n", "<F9>", function()
+  require("config.git_annotate").toggle()
+end, { desc = "Toggle Git Annotate Panel" })
 
 -- F11: copy the repo-relative path of the current file. In visual mode the
 -- selected line range is appended (path:start or path:start-end).
