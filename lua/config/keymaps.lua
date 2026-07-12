@@ -14,7 +14,8 @@
 -- │ F7      : n → send file / v → send selection to AI agent (codechat)  │
 -- │ F8      : n → document symbols of current file (LSP / Treesitter)    │
 -- │ F9/F10  : (unmapped)                                                 │
--- │ F11     : n/t → toggle left Snacks terminal                         │
+-- │ F11     : n → copy repo-rel path | v → repo-rel path + line range    │
+-- │ S-F11   : n → copy-path menu (abs / rel / name / dir / ~)            │
 -- │ F12     : n → resume last Snacks picker search                       │
 -- └─────────────────────────────────────────────────────────────────────┘
 
@@ -145,60 +146,41 @@ vim.keymap.set("v", "<F5>", function()
   Snacks.picker.git_files({ pattern = text })
 end, { desc = "Find Git files by selection" })
 
--- lua/keymaps.lua
+-- Path-copy helpers -----------------------------------------------------------
 
-local function get_root_relative_path()
-  local current_file = vim.fn.expand("%:p")
-  if current_file == "" then
-    return nil
+-- Copy text to the system clipboard and echo what was copied.
+local function copy_path(text)
+  if not text or text == "" then
+    vim.notify("No file path to copy", vim.log.levels.WARN, { title = "Copy Path" })
+    return
   end
-
-  local project_root = vim.fs.root(0, { ".git", "package.json", "Cargo.toml", "go.mod", "Makefile" })
-
-  if project_root then
-    local relative_path = vim.fn.fnamemodify(current_file, ":." .. project_root)
-    if relative_path:sub(1, #project_root) == project_root then
-      relative_path = current_file:sub(#project_root + 2)
-    end
-    return relative_path
-  else
-    return vim.fn.fnamemodify(current_file, ":.")
-  end
+  vim.fn.setreg("+", text)
+  vim.notify("Copied: " .. text, vim.log.levels.INFO, { title = "Copy Path" })
 end
 
--- Normal mode mapping: F9
---vim.keymap.set("n", "<F6>", function()
---  local path = get_root_relative_path()
---  if not path then
---    return
---  end
---
---  vim.fn.setreg("+", path)
---  vim.notify("Copied: " .. path, vim.log.levels.INFO)
---end, { desc = "Copy root relative file path" })
+-- Repo-relative path of the current buffer. Falls back to a home-relative path
+-- when the file lives outside any recognized project root, and nil for unnamed
+-- buffers.
+local function repo_relative_path()
+  local abs = vim.fn.expand("%:p")
+  if abs == "" then
+    return nil
+  end
+  local root = vim.fs.root(0, { ".git", "package.json", "Cargo.toml", "go.mod", "Makefile" })
+  if root and abs:sub(1, #root + 1) == root .. "/" then
+    return abs:sub(#root + 2)
+  end
+  return vim.fn.fnamemodify(abs, ":~")
+end
 
--- Visual mode mapping: F9
--- vim.keymap.set("v", "<F6>", function()
---   local path = get_root_relative_path()
---   if not path then
---     return
---   end
---
---   vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<ESC>", true, false, true), "x", true)
---
---   local start_line = vim.api.nvim_buf_get_mark(0, "<")[1]
---   local end_line = vim.api.nvim_buf_get_mark(0, ">")[1]
---
---   local result_text = path
---   if start_line == end_line then
---     result_text = string.format("%s, line %d", path, start_line)
---   else
---     result_text = string.format("%s, line %d-%d", path, start_line, end_line)
---   end
---
---   vim.fn.setreg("+", result_text)
---   vim.notify("Copied: " .. result_text, vim.log.levels.INFO)
--- end, { desc = "Copy root relative path with lines" })
+-- Start/end line of the current visual selection (ascending).
+local function visual_line_range()
+  local l1, l2 = vim.fn.line("v"), vim.fn.line(".")
+  if l1 > l2 then
+    l1, l2 = l2, l1
+  end
+  return l1, l2
+end
 
 -- List symbols / methods of the current file.
 -- Uses LSP document symbols when a server is attached, otherwise falls back to
@@ -208,25 +190,54 @@ vim.keymap.set("n", "<F8>", function()
   require("config.ts_symbols").pick()
 end, { desc = "Document Symbols (Current File)" })
 
--- Toggle Snacks terminal on the left split
-vim.keymap.set("n", "<F11>", function()
-  Snacks.terminal.toggle(nil, {
-    win = {
-      position = "left",
-      width = 80,
-    },
-  })
-end, { desc = "Toggle Left Snacks Terminal" })
+-- F11: copy the repo-relative path of the current file. In visual mode the
+-- selected line range is appended (path:start or path:start-end).
+map("n", "<F11>", function()
+  copy_path(repo_relative_path())
+end, { desc = "Copy repo-relative path" })
 
--- Make sure F11 works inside Terminal mode to hide it
-vim.keymap.set("t", "<F11>", function()
-  Snacks.terminal.toggle(nil, {
-    win = {
-      position = "left",
-      width = 80,
-    },
-  })
-end, { desc = "Hide Left Snacks Terminal" })
+map("v", "<F11>", function()
+  local rel = repo_relative_path()
+  if not rel then
+    copy_path(nil)
+    return
+  end
+  local l1, l2 = visual_line_range()
+  copy_path(l1 == l2 and (rel .. ":" .. l1) or (rel .. ":" .. l1 .. "-" .. l2))
+  vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "n", false)
+end, { desc = "Copy repo-relative path + line range" })
+
+-- Shift+F11: pick which representation of the current file path to copy.
+-- Terminals emit shifted F11 as <F23>, so map both spellings.
+local function copy_path_menu()
+  local abs = vim.fn.expand("%:p")
+  if abs == "" then
+    copy_path(nil)
+    return
+  end
+  local rel = repo_relative_path()
+  local items = {
+    { label = "Absolute path", value = abs },
+    { label = "Repo-relative path", value = rel },
+    { label = "File name (with extension)", value = vim.fn.expand("%:t") },
+    { label = "File name (no extension)", value = vim.fn.expand("%:t:r") },
+    { label = "Directory (repo-relative)", value = rel and vim.fn.fnamemodify(rel, ":h") or nil },
+    { label = "Home-relative path", value = vim.fn.expand("%:p:~") },
+  }
+  vim.ui.select(items, {
+    prompt = "Copy path as:",
+    format_item = function(item)
+      return item.label .. "  →  " .. (item.value or "n/a")
+    end,
+  }, function(choice)
+    if choice then
+      copy_path(choice.value)
+    end
+  end)
+end
+
+map("n", "<S-F11>", copy_path_menu, { desc = "Copy path (menu)" })
+map("n", "<F23>", copy_path_menu, { desc = "Copy path (menu)" })
 
 -- Map F12 to resume the last Snacks picker search
 -- Map F12 to resume the last Snacks picker search
