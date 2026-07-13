@@ -217,4 +217,65 @@ function M.add_file(path)
   end
 end
 
+--- List loaded, listed, real-file buffers (deduped by path, most-recently-used
+--- first) for context sharing.
+---@return { bufnr: integer, path: string, relpath: string, name: string }[]
+function M.list_file_buffers()
+  local out = {}
+  local seen = {}
+  -- vim.fn.getbufinfo gives us `lastused`, so we can surface the buffers the
+  -- user touched most recently at the top of the picker.
+  local infos = vim.fn.getbufinfo({ buflisted = 1 })
+  table.sort(infos, function(a, b)
+    return (a.lastused or 0) > (b.lastused or 0)
+  end)
+  for _, info in ipairs(infos) do
+    local bufnr = info.bufnr
+    if is_real_file_buffer(bufnr) then
+      local path = vim.api.nvim_buf_get_name(bufnr)
+      if not seen[path] then
+        seen[path] = true
+        out[#out + 1] = {
+          bufnr = bufnr,
+          path = path,
+          relpath = format_path(path),
+          name = vim.fn.fnamemodify(path, ":t"),
+        }
+      end
+    end
+  end
+  return out
+end
+
+--- Send at-mentions for a list of file paths. The MCP `at_mentioned`
+--- notification carries a single file, so multiple files are sent as separate
+--- notifications (one per file). Returns the number of files sent.
+---@param paths string[]
+---@return integer sent
+function M.add_files(paths)
+  if not server.is_running() then
+    util.warn("Claude IDE server not running")
+    return 0
+  end
+  if server.client_count() == 0 then
+    util.warn("no Claude client connected")
+    return 0
+  end
+  local sent = 0
+  for _, path in ipairs(paths or {}) do
+    if path and path ~= "" then
+      server.broadcast({
+        jsonrpc = "2.0",
+        method = "at_mentioned",
+        params = { filePath = format_path(path) },
+      })
+      sent = sent + 1
+    end
+  end
+  if sent > 0 then
+    util.info(string.format("added %d file%s to Claude context", sent, sent == 1 and "" or "s"))
+  end
+  return sent
+end
+
 return M

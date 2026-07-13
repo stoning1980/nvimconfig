@@ -10,7 +10,7 @@
 -- │ S-F3    : n → next file entry (Diffview only)                        │
 -- │ F4      : n → git grep string  |  v → git grep exact word (sel.)     │
 -- │ F5      : n → find git files   |  v → find git files by selection    │
--- │ F6      : v → send selection to Claude IDE (claudeide.lua)           │
+-- │ F6      : v → send selection | n → send buffered files (claudeide)   │
 -- │ F7      : n → send file / v → send selection to AI agent (codechat)  │
 -- │ F8      : n → document symbols of current file (LSP / Treesitter)    │
 -- │ F9      : n → toggle git annotate panel (per-line author/date)      │
