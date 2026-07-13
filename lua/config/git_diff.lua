@@ -1,6 +1,6 @@
 -- Diffview review commands:
---   :Pdf         compare HEAD with the previous commit
---   :CodeReview  compare HEAD with a local or remote branch (with completion)
+--   :Pdf         compare HEAD with a previous commit (Tab: last 20 ancestors)
+--   :CodeReview  compare HEAD with a local or remote branch (ordered picker)
 local M = {}
 
 local function notify(msg, level)
@@ -89,9 +89,39 @@ local function open(rev)
   vim.cmd("DiffviewOpen " .. rev)
 end
 
--- Compare HEAD with the previous commit.
-function M.diff_previous_commit()
-  open("HEAD~1..HEAD")
+-- Completion for `:Pdf` — the last 20 ancestor commits of HEAD (HEAD itself
+-- excluded), newest first. Each item is prefixed with a zero-padded index like
+-- "(01)" so blink.cmp's cmdline completion keeps them in git-log order (it
+-- sorts candidates alphabetically, and "(01)" < "(02)" < ... < "(20)").
+function M.complete_commits()
+  local out = git_lines({ "git", "log", "--skip=1", "--max-count=20", "--format=%h %s", "HEAD" })
+  if not out then
+    return {}
+  end
+  local items = {}
+  for i, line in ipairs(out) do
+    items[i] = string.format("(%02d) %s", i, line)
+  end
+  return items
+end
+
+-- Compare HEAD with a previous commit.
+--
+-- With no argument, diffs HEAD against its immediate parent (HEAD~1..HEAD).
+-- Otherwise the argument is a "(NN) <sha> <subject>" completion item (see
+-- complete_commits) or a raw revision, and HEAD is diffed against that commit.
+function M.diff_previous_commit(arg)
+  local rev
+  if arg and arg ~= "" then
+    -- Prefer the sha from a "(NN) <sha> <subject>" item; fall back to the index
+    -- (HEAD~N) if only "(NN)" survived, then to a raw revision token.
+    rev = arg:match("^%(%d+%)%s+(%x%x%x%x+)")
+    if not rev then
+      local n = arg:match("^%(%s*(%d+)%s*%)")
+      rev = n and ("HEAD~" .. tonumber(n)) or arg:match("^%S+")
+    end
+  end
+  open((rev or "HEAD~1") .. "..HEAD")
 end
 
 -- Compare HEAD with a branch (from arg or interactive selection).
@@ -143,9 +173,15 @@ function M.review_code(branch)
 end
 
 function M.setup()
-  vim.api.nvim_create_user_command("Pdf", function()
-    M.diff_previous_commit()
-  end, { desc = "Diffview: compare HEAD with previous commit" })
+  vim.api.nvim_create_user_command("Pdf", function(opts)
+    M.diff_previous_commit(opts.args)
+  end, {
+    nargs = "*",
+    complete = function()
+      return M.complete_commits()
+    end,
+    desc = "Diffview: compare HEAD with a previous commit",
+  })
 
   vim.api.nvim_create_user_command("CodeReview", function(opts)
     M.review_code(opts.args)
