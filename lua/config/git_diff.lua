@@ -1,6 +1,6 @@
 -- Diffview review commands:
 --   :Pdf         compare HEAD with a previous commit (Tab: last 20 ancestors)
---   :CodeReview  compare HEAD with a local or remote branch (ordered picker)
+--   :CodeReview  compare HEAD with a local or remote branch (Tab: ordered branches)
 local M = {}
 
 local function notify(msg, level)
@@ -9,6 +9,10 @@ end
 
 -- Remote base branches surfaced at the very top of the list, in this order.
 local PRIORITY_REMOTES = { "origin/develop", "origin/master", "origin/main", "origin/dev" }
+
+-- Cap on remote branches to list (after the priority ones). Keeps the picker
+-- fast in repos with thousands of remote branches.
+local MAX_REMOTES = 100
 
 local function git_lines(args)
   local out = vim.fn.systemlist(args)
@@ -30,6 +34,10 @@ end
 --   5.   the 3 most-recently-committed local branches (newest first)
 --   6.   everything else: remaining remote branches, then remaining locals
 --        (each newest-committed first)
+--
+-- Only the MAX_REMOTES most-recently-committed remote branches are listed, so
+-- the query stays fast in repos with very many remote branches. We ask git for
+-- a few extra to absorb the "origin/HEAD" pointer we filter out below.
 local function get_branches()
   local locals =
     git_lines({ "git", "for-each-ref", "--sort=-committerdate", "--format=%(refname:short)", "refs/heads/" })
@@ -41,12 +49,22 @@ local function get_branches()
   local remotes = {}
   for _, r in
     ipairs(
-      git_lines({ "git", "for-each-ref", "--sort=-committerdate", "--format=%(refname:short)", "refs/remotes/" }) or {}
+      git_lines({
+        "git",
+        "for-each-ref",
+        "--sort=-committerdate",
+        "--count=" .. (MAX_REMOTES + 5),
+        "--format=%(refname:short)",
+        "refs/remotes/",
+      }) or {}
     )
   do
     -- Skip the symbolic "origin/HEAD" pointer.
     if r:find("/") and not r:find("HEAD") then
       table.insert(remotes, r)
+      if #remotes >= MAX_REMOTES then
+        break
+      end
     end
   end
 
@@ -63,8 +81,12 @@ local function get_branches()
   for _, r in ipairs(remotes) do
     remote_set[r] = true
   end
+  -- Surface priority remotes first. If one fell outside the MAX_REMOTES window
+  -- fetched above, verify it directly so it still shows.
   for _, p in ipairs(PRIORITY_REMOTES) do
     if remote_set[p] then
+      add(p)
+    elseif vim.fn.system({ "git", "rev-parse", "--verify", "--quiet", "refs/remotes/" .. p }) ~= "" then
       add(p)
     end
   end
@@ -124,16 +146,29 @@ function M.diff_previous_commit(arg)
   open((rev or "HEAD~1") .. "..HEAD")
 end
 
--- Compare HEAD with a branch (from arg or interactive selection).
+-- Completion for `:CodeReview` — the ordered branch list (see get_branches).
+-- Each item is prefixed with a zero-padded index like "(001)" so blink.cmp's
+-- cmdline completion preserves our priority ordering (it sorts candidates
+-- alphabetically, and "(001)" < "(002)" < ... < "(100)"). Three digits keep the
+-- order correct past 99, since e.g. "(100)" would sort before "(99)".
+function M.complete_branches()
+  local branches = get_branches()
+  local items = {}
+  for i, b in ipairs(branches) do
+    items[i] = string.format("(%03d) %s", i, b)
+  end
+  return items
+end
+
+-- Compare HEAD with a branch.
 --
--- Selection goes through the Snacks picker with an index-based sort so our
--- priority ordering (see get_branches) is always preserved; typing only
--- filters the list, it never reorders it. We deliberately avoid cmdline
--- Tab-completion here because blink.cmp fuzzy-sorts those results and cannot be
--- told to honor a custom order per command.
+-- The argument is a "(NN) <branch>" completion item (see complete_branches) or
+-- a raw branch name, and HEAD is diffed against that branch (branch...HEAD).
 function M.review_code(branch)
   if branch and branch ~= "" then
-    open(branch .. "...HEAD")
+    -- Strip the "(NN) " prefix from a completion item, if present.
+    local name = branch:match("^%(%d+%)%s+(.+)$") or branch:match("^%S+")
+    open(name .. "...HEAD")
     return
   end
 
@@ -142,34 +177,7 @@ function M.review_code(branch)
     notify("No branches found", vim.log.levels.WARN)
     return
   end
-
-  if not (Snacks and Snacks.picker) then
-    vim.ui.select(branches, { prompt = "Review HEAD against branch:" }, function(choice)
-      if choice then
-        open(choice .. "...HEAD")
-      end
-    end)
-    return
-  end
-
-  local items = {}
-  for i, b in ipairs(branches) do
-    items[i] = { idx = i, text = b }
-  end
-
-  Snacks.picker.pick({
-    title = "Review HEAD against branch",
-    items = items,
-    format = "text",
-    sort = { fields = { "idx" } },
-    layout = { preview = false },
-    confirm = function(picker, item)
-      picker:close()
-      if item and item.text then
-        open(item.text .. "...HEAD")
-      end
-    end,
-  })
+  notify("Provide a branch (Tab to complete)", vim.log.levels.WARN)
 end
 
 function M.setup()
@@ -186,7 +194,10 @@ function M.setup()
   vim.api.nvim_create_user_command("CodeReview", function(opts)
     M.review_code(opts.args)
   end, {
-    nargs = "?",
+    nargs = "*",
+    complete = function()
+      return M.complete_branches()
+    end,
     desc = "Diffview: compare HEAD with a local/remote branch",
   })
 end
