@@ -48,16 +48,14 @@ local function get_branches()
 
   local remotes = {}
   for _, r in
-    ipairs(
-      git_lines({
-        "git",
-        "for-each-ref",
-        "--sort=-committerdate",
-        "--count=" .. (MAX_REMOTES + 5),
-        "--format=%(refname:short)",
-        "refs/remotes/",
-      }) or {}
-    )
+    ipairs(git_lines({
+      "git",
+      "for-each-ref",
+      "--sort=-committerdate",
+      "--count=" .. (MAX_REMOTES + 5),
+      "--format=%(refname:short)",
+      "refs/remotes/",
+    }) or {})
   do
     -- Skip the symbolic "origin/HEAD" pointer.
     if r:find("/") and not r:find("HEAD") then

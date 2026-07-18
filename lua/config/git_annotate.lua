@@ -8,13 +8,21 @@ local M = {}
 
 local ns = vim.api.nvim_create_namespace("git_annotate")
 
+-- Upper bound on how long `git blame` may run before we cancel and tell the
+-- user, so F4 can never leave a spinner spinning forever on a giant file or a
+-- wedged git process.
+local BLAME_TIMEOUT_MS = 30000
+
 local state = {
   win = nil, --- @type integer? annotate window id
   buf = nil, --- @type integer? annotate buffer id
   src_win = nil, --- @type integer? source window id
+  src_buf = nil, --- @type integer? source buffer the blame belongs to
   job = nil, --- @type vim.SystemObj? in-flight `git blame` handle
+  gen = 0, --- @type integer bumped on every open/close to reject stale job callbacks
   spinner_win = nil, --- @type integer? progress spinner window id
   spinner_timer = nil, --- @type uv.uv_timer_t? spinner animation timer
+  augroup = nil, --- @type integer? autocmd group that auto-closes on buffer change
 }
 
 local SPINNER = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
@@ -158,6 +166,13 @@ local function render(commits, entries)
 end
 
 function M.close()
+  -- Invalidate any in-flight or already-queued blame callback so it can't
+  -- resurrect a panel after we've torn this one down.
+  state.gen = state.gen + 1
+  if state.augroup then
+    vim.api.nvim_del_augroup_by_id(state.augroup)
+    state.augroup = nil
+  end
   if state.job then
     state.job:kill("sigterm")
     state.job = nil
@@ -170,7 +185,7 @@ function M.close()
     vim.wo[state.src_win].scrollbind = false
     vim.wo[state.src_win].cursorbind = false
   end
-  state.win, state.buf, state.src_win = nil, nil, nil
+  state.win, state.buf, state.src_win, state.src_buf = nil, nil, nil, nil
 end
 
 -- Build the annotate split from parsed blame output. Runs after the async
@@ -180,6 +195,11 @@ local function build_panel(src_win, src_buf, out)
   if not vim.api.nvim_win_is_valid(src_win) or vim.api.nvim_win_get_buf(src_win) ~= src_buf then
     vim.notify("Buffer changed before blame finished; cancelled", vim.log.levels.WARN, { title = "Git Annotate" })
     return
+  end
+
+  -- Never stack two panels: tear down any existing one before building.
+  if state.win and vim.api.nvim_win_is_valid(state.win) then
+    M.close()
   end
 
   local commits, entries = parse_blame(out)
@@ -219,7 +239,7 @@ local function build_panel(src_win, src_buf, out)
   wo.scrollbind = true
   wo.cursorbind = true
 
-  state.win, state.buf, state.src_win = win, buf, src_win
+  state.win, state.buf, state.src_win, state.src_buf = win, buf, src_win, src_buf
 
   vim.keymap.set("n", "q", M.close, { buffer = buf, nowait = true, desc = "Close git annotate" })
 
@@ -227,6 +247,25 @@ local function build_panel(src_win, src_buf, out)
   vim.cmd("syncbind")
   vim.api.nvim_set_current_win(src_win)
   vim.cmd("syncbind")
+
+  -- The panel is bound to a specific buffer in src_win. Once that window shows a
+  -- different file (`:edit`, a picker, etc.) the blame no longer lines up, so
+  -- close rather than leave a misleading gutter. Also close if src_win goes away.
+  state.augroup = vim.api.nvim_create_augroup("GitAnnotateAutoClose", { clear = true })
+  vim.api.nvim_create_autocmd({ "BufWinEnter", "WinEnter" }, {
+    group = state.augroup,
+    desc = "Close git annotate when its source window changes file",
+    callback = function()
+      if not (state.win and vim.api.nvim_win_is_valid(state.win)) then
+        return
+      end
+      if not (state.src_win and vim.api.nvim_win_is_valid(state.src_win)) then
+        M.close()
+      elseif vim.api.nvim_win_get_buf(state.src_win) ~= state.src_buf then
+        M.close()
+      end
+    end,
+  })
 end
 
 function M.open()
@@ -246,18 +285,33 @@ function M.open()
   end
 
   local dir = vim.fn.fnamemodify(file, ":h")
-  -- Run blame off the main loop so the editor stays responsive on huge repos;
-  -- a spinner float signals that work is in progress. build_panel runs on the
-  -- scheduled callback once output is ready.
+  -- Bump the generation before launching so a superseded or cancelled blame
+  -- can't build a panel after the fact (see the gen check in the callback).
+  state.gen = state.gen + 1
+  local gen = state.gen
+  -- Run blame off the main loop so the editor stays responsive on huge repos; a
+  -- spinner float signals work is in progress and the timeout guarantees we
+  -- never spin forever. `--porcelain` (not `--line-porcelain`) emits each
+  -- commit's details once rather than per line — far less output to transfer
+  -- and parse. build_panel runs on the scheduled callback once output is ready.
   start_spinner("Computing git blame…")
   state.job = vim.system(
-    { "git", "-C", dir, "blame", "--line-porcelain", "--", file },
-    { text = true },
+    { "git", "-C", dir, "blame", "--porcelain", "--", file },
+    { text = true, timeout = BLAME_TIMEOUT_MS },
     vim.schedule_wrap(function(res)
+      -- Drop output from a blame that was cancelled or superseded by a newer one.
+      if gen ~= state.gen then
+        return
+      end
       state.job = nil
       stop_spinner()
       if res.code ~= 0 then
-        local err = (res.stderr and res.stderr ~= "") and res.stderr or "unknown error"
+        local err
+        if res.signal and res.signal ~= 0 then
+          err = "timed out or cancelled (file too large or git wedged?)"
+        else
+          err = (res.stderr and res.stderr ~= "") and res.stderr or "unknown error"
+        end
         vim.notify("git blame failed: " .. err, vim.log.levels.ERROR, { title = "Git Annotate" })
         return
       end

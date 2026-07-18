@@ -14,7 +14,8 @@
 -- │ F7      : n → find git files   |  v → find git files by selection    │
 -- │ F8      : v → send selection | n → send buffered files (claudeide)   │
 -- │ F9      : n → send file / v → send selection to AI agent (codechat)  │
--- │ F10     : n → document symbols of current file (LSP / Treesitter)    │
+-- │ F10     : n → mark word / v → mark selection (interestingwords)      │
+-- │ S-F10   : n → clear all interestingwords marks                       │
 -- │ F11     : n → copy repo-rel path | v → repo-rel path + line range    │
 -- │ S-F11   : n/v/i → copy-path menu (abs / rel / name / ~)              │
 -- │ F12     : n → resume last Snacks picker search                       │
@@ -185,13 +186,24 @@ local function visual_line_range()
   return l1, l2
 end
 
--- List symbols / methods of the current file.
--- Uses LSP document symbols when a server is attached, otherwise falls back to
--- a Treesitter-based extractor (works for Kotlin in huge Android projects where
--- kotlin_language_server can't attach).
+-- F10: mark matching text in a distinct color (interestingwords.nvim). Normal
+-- mode marks the word under the cursor; visual mode marks the selection. Every
+-- occurrence of the same text gets the same color across all open and future
+-- buffers; press F10 again on it to unmark. Shift+F10 clears every mark
+-- (terminals emit shifted F10 as <F22>, so map both spellings).
 vim.keymap.set("n", "<F10>", function()
-  require("config.ts_symbols").pick()
-end, { desc = "Document Symbols (Current File)" })
+  require("interestingwords").InterestingWord("n", false)
+end, { desc = "Mark word under cursor" })
+
+vim.keymap.set("x", "<F10>", function()
+  require("interestingwords").InterestingWord("v", false)
+end, { desc = "Mark selection" })
+
+local function clear_marks()
+  require("interestingwords").UncolorAllWords()
+end
+vim.keymap.set("n", "<S-F10>", clear_marks, { desc = "Clear all marks" })
+vim.keymap.set("n", "<F22>", clear_marks, { desc = "Clear all marks" })
 
 -- F4: toggle an Android Studio / JetBrains style "Annotate" panel — a
 -- scroll-bound left split showing author + date for every line. Press q inside
@@ -212,8 +224,19 @@ map("n", "<F5>", function()
 end, { desc = "Grep Open Buffers" })
 
 map("v", "<F5>", function()
-  vim.cmd('noau normal! "yy')
-  local text = vim.fn.getreg("y")
+  -- Capture the selection before touching modes or registers. Grabbing it with a
+  -- `"yy` yank inside a visual mapping is fragile: it can leave a dangling `y`
+  -- operator (nvim gets stuck in operator-pending, "can't exit"), and it yanks
+  -- the whole multi-line block whose embedded newlines break the fixed-string
+  -- (regex = false) search.
+  local region = vim.fn.getregion(vim.fn.getpos("v"), vim.fn.getpos("."), { type = vim.fn.mode() })
+  -- Leave visual mode synchronously ("x") so the picker opens in a clean state.
+  vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "nx", false)
+  -- A grep term is a single line; if several were selected, search the first.
+  local text = region[1] or ""
+  if text == "" then
+    return
+  end
   -- regex = false → rg --fixed-strings, so the selection matches literally
   -- (e.g. "oncomplete()" isn't treated as a regex with an empty group).
   Snacks.picker.grep_buffers({ search = text, regex = false, need_search = true })
