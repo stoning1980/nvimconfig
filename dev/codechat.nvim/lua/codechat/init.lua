@@ -207,7 +207,7 @@ function M.stop(name)
   util.info((agent_cfg(name) and agent_cfg(name).label or name) .. " stopped")
 end
 
--- The agent <F7> last routed to (in-memory only). Used as a tie-breaker when
+-- The agent <F9> last routed to (in-memory only). Used as a tie-breaker when
 -- more than one chat terminal is alive; NOT persisted across restarts.
 M.active = nil
 
@@ -347,7 +347,7 @@ local function create_commands()
   end, { desc = "Send the current file to the active AI agent" })
   cmd("CodeChatPick", function()
     M.pick_agent(function() end)
-  end, { desc = "Choose which AI agent <F7> sends to" })
+  end, { desc = "Choose which AI agent <F9> sends to" })
 
   -- Per-agent commands (target a specific agent regardless of the choice).
   for name, agent in pairs(config.options.agents) do

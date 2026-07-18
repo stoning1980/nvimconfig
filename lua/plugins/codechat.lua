@@ -1,7 +1,7 @@
 -- codechat.nvim: drive CLI coding agents (Claude, Cursor) in Neovim terminals.
 -- Runs the agent's interactive TUI in a terminal and injects the current
 -- file/selection + an optional typed comment into its input box.
---   <F7>  -> send to the active agent (normal: whole file, visual: selection).
+--   <F9>  -> send to the active agent (normal: whole file, visual: selection).
 --           On first use it pops a picker (ttadk Claude / ttadk Cursor /
 --           Claude / Cursor / Relay) and remembers the choice across restarts. Change
 --           it later with :CodeChatPick.
@@ -39,11 +39,11 @@ return {
   },
   keys = {
     -- The one shortcut: send to the remembered agent (picker on first use).
-    { "<F7>", "<cmd>CodeChatSendFile<cr>", mode = "n", desc = "Send current file to AI agent" },
-    { "<F7>", ":<C-u>CodeChatSend<cr>", mode = "v", desc = "Send selection to AI agent" },
+    { "<F9>", "<cmd>CodeChatSendFile<cr>", mode = "n", desc = "Send current file to AI agent" },
+    { "<F9>", ":<C-u>CodeChatSend<cr>", mode = "v", desc = "Send selection to AI agent" },
     -- Helpers: focus the agent terminal (to answer prompts) / switch agent.
     { "<leader>ac", "<cmd>CodeChat<cr>", desc = "Focus/toggle AI agent terminal" },
-    { "<leader>ap", "<cmd>CodeChatPick<cr>", desc = "Pick AI agent for <F7>" },
+    { "<leader>ap", "<cmd>CodeChatPick<cr>", desc = "Pick AI agent for <F9>" },
   },
   opts = {
     -- Customize how each agent is launched. `command` can be a plain binary, a

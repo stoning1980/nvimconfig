@@ -8,13 +8,13 @@
 -- │ S-F1/F2 : n → toggle Diffview layout (side-by-side ↔ stacked)       │
 -- │ F3      : n → next diff hunk (Diffview only; error else)             │
 -- │ S-F3    : n → next file entry (Diffview only)                        │
--- │ F4      : n → git grep string  |  v → git grep exact word (sel.)     │
--- │ F5      : n → find git files   |  v → find git files by selection    │
--- │ F6      : v → send selection | n → send buffered files (claudeide)   │
--- │ F7      : n → send file / v → send selection to AI agent (codechat)  │
--- │ F8      : n → document symbols of current file (LSP / Treesitter)    │
--- │ F9      : n → toggle git annotate panel (per-line author/date)      │
--- │ F10     : n → grep open buffers  |  v → grep selection in buffers    │
+-- │ F4      : n → toggle git annotate panel (per-line author/date)      │
+-- │ F5      : n → grep open buffers  |  v → grep selection in buffers    │
+-- │ F6      : n → git grep string  |  v → git grep literal word (sel.)   │
+-- │ F7      : n → find git files   |  v → find git files by selection    │
+-- │ F8      : v → send selection | n → send buffered files (claudeide)   │
+-- │ F9      : n → send file / v → send selection to AI agent (codechat)  │
+-- │ F10     : n → document symbols of current file (LSP / Treesitter)    │
 -- │ F11     : n → copy repo-rel path | v → repo-rel path + line range    │
 -- │ S-F11   : n → copy-path menu (abs / rel / name / ~)                  │
 -- │ F12     : n → resume last Snacks picker search                       │
@@ -127,20 +127,20 @@ end
 map("n", "<S-F3>", next_diff_file, { desc = "Next File (Diffview)" })
 map("n", "<F15>", next_diff_file, { desc = "Next File (Diffview)" })
 
--- F4: git grep. Normal → regex search string; visual → literal whole-word match
+-- F6: git grep. Normal → regex search string; visual → literal whole-word match
 -- of the selection (see git_grep_selection_word).
-map("n", "<F4>", function()
+map("n", "<F6>", function()
   Snacks.picker.git_grep()
 end, { desc = "Search String (Git tracked)" })
-map("v", "<F4>", git_grep_selection_word, { desc = "Search exact word only (Git tracked)" })
+map("v", "<F6>", git_grep_selection_word, { desc = "Search exact word only (Git tracked)" })
 
--- <F5> ----------------------------------------------------------------
--- vim.keymap.set("n", "<F5>", "<leader>ff", { desc = "Find Files", remap = true })
-vim.keymap.set("n", "<F5>", function()
+-- <F7> ----------------------------------------------------------------
+-- vim.keymap.set("n", "<F7>", "<leader>ff", { desc = "Find Files", remap = true })
+vim.keymap.set("n", "<F7>", function()
   Snacks.picker.git_files()
 end, { desc = "Search Git Files" })
 
-vim.keymap.set("v", "<F5>", function()
+vim.keymap.set("v", "<F7>", function()
   -- 1. Copy selection to the 'y' register
   vim.cmd('noau normal! "yy')
   -- 2. Get the text from the register
@@ -189,25 +189,25 @@ end
 -- Uses LSP document symbols when a server is attached, otherwise falls back to
 -- a Treesitter-based extractor (works for Kotlin in huge Android projects where
 -- kotlin_language_server can't attach).
-vim.keymap.set("n", "<F8>", function()
+vim.keymap.set("n", "<F10>", function()
   require("config.ts_symbols").pick()
 end, { desc = "Document Symbols (Current File)" })
 
--- F9: toggle an Android Studio / JetBrains style "Annotate" panel — a
+-- F4: toggle an Android Studio / JetBrains style "Annotate" panel — a
 -- scroll-bound left split showing author + date for every line. Press q inside
--- the panel (or F9 again) to close it.
-map("n", "<F9>", function()
+-- the panel (or F4 again) to close it.
+map("n", "<F4>", function()
   require("config.git_annotate").toggle()
 end, { desc = "Toggle Git Annotate Panel" })
 
--- F10: grep across open buffers (like F4, but scoped to loaded buffers instead
+-- F5: grep across open buffers (like F6, but scoped to loaded buffers instead
 -- of git-tracked files). Normal → prompt for the search string; visual → grep
 -- the selection immediately.
-map("n", "<F10>", function()
+map("n", "<F5>", function()
   Snacks.picker.grep_buffers()
 end, { desc = "Grep Open Buffers" })
 
-map("v", "<F10>", function()
+map("v", "<F5>", function()
   vim.cmd('noau normal! "yy')
   local text = vim.fn.getreg("y")
   -- regex = false → rg --fixed-strings, so the selection matches literally
