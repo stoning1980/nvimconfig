@@ -16,7 +16,7 @@
 -- │ F9      : n → toggle git annotate panel (per-line author/date)      │
 -- │ F10     : (unmapped)                                                 │
 -- │ F11     : n → copy repo-rel path | v → repo-rel path + line range    │
--- │ S-F11   : n → copy-path menu (abs / rel / name / dir / ~)            │
+-- │ S-F11   : n → copy-path menu (abs / rel / name / ~)                  │
 -- │ F12     : n → resume last Snacks picker search                       │
 -- └─────────────────────────────────────────────────────────────────────┘
 
@@ -229,7 +229,6 @@ local function copy_path_menu()
     { label = "Repo-relative path", value = rel },
     { label = "File name (with extension)", value = vim.fn.expand("%:t") },
     { label = "File name (no extension)", value = vim.fn.expand("%:t:r") },
-    { label = "Directory (repo-relative)", value = rel and vim.fn.fnamemodify(rel, ":h") or nil },
     { label = "Home-relative path", value = vim.fn.expand("%:p:~") },
   }
   vim.ui.select(items, {
