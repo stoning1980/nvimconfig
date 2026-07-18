@@ -203,8 +203,12 @@ end, { desc = "Toggle Git Annotate Panel" })
 -- F5: grep across open buffers (like F6, but scoped to loaded buffers instead
 -- of git-tracked files). Normal → prompt for the search string; visual → grep
 -- the selection immediately.
+-- need_search = true overrides the grep_buffers default (false), which would
+-- otherwise grep every line of every buffer with an empty pattern and keep
+-- re-ranking that streaming list — that churn resets the selection so <c-n>/
+-- <c-p> can't move it. Requiring a term yields a stable list like F6.
 map("n", "<F5>", function()
-  Snacks.picker.grep_buffers()
+  Snacks.picker.grep_buffers({ need_search = true })
 end, { desc = "Grep Open Buffers" })
 
 map("v", "<F5>", function()
@@ -212,7 +216,7 @@ map("v", "<F5>", function()
   local text = vim.fn.getreg("y")
   -- regex = false → rg --fixed-strings, so the selection matches literally
   -- (e.g. "oncomplete()" isn't treated as a regex with an empty group).
-  Snacks.picker.grep_buffers({ search = text, regex = false })
+  Snacks.picker.grep_buffers({ search = text, regex = false, need_search = true })
 end, { desc = "Grep selection in Open Buffers" })
 
 -- F11: copy the repo-relative path of the current file. In visual mode the
