@@ -96,6 +96,21 @@ local PALETTE = {
 
 local UNCOMMITTED = string.rep("0", 40)
 
+-- Cap the author column so one long name/email can't blow up the panel width.
+-- 10 keeps short usernames whole while staying compact; longer names are cut and
+-- marked with an ellipsis (e.g. "junjiang.…").
+local MAX_AUTHOR_WIDTH = 10
+
+-- Truncate `s` to at most `max` display columns, replacing the overflow with a
+-- single-column ellipsis. Works on character boundaries so multibyte names are
+-- not split mid-codepoint.
+local function truncate(s, max)
+  if vim.fn.strdisplaywidth(s) <= max then
+    return s
+  end
+  return vim.fn.strcharpart(s, 0, max - 1) .. "…"
+end
+
 local function ensure_highlights()
   for i, color in ipairs(PALETTE) do
     vim.api.nvim_set_hl(0, "GitAnnotateAuthor" .. i, { fg = color, default = true })
@@ -148,12 +163,13 @@ local function render(commits, entries)
     local c = commits[sha] or {}
     local date, author, group
     if sha == UNCOMMITTED then
-      date, author, group = "          ", "Uncommitted", "Comment"
+      date, author, group = "        ", "Uncommitted", "Comment"
     else
-      date = c.time and os.date("%Y-%m-%d", c.time) or "----------"
+      date = c.time and os.date("%y-%m-%d", c.time) or "--------"
       author = c.author or "?"
       group = sha_color_group(sha)
     end
+    author = truncate(author, MAX_AUTHOR_WIDTH)
     local text = date .. " " .. author
     lines[i] = text
     hls[i] = {
