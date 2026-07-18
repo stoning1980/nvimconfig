@@ -14,7 +14,7 @@
 -- │ F7      : n → send file / v → send selection to AI agent (codechat)  │
 -- │ F8      : n → document symbols of current file (LSP / Treesitter)    │
 -- │ F9      : n → toggle git annotate panel (per-line author/date)      │
--- │ F10     : (unmapped)                                                 │
+-- │ F10     : n → grep open buffers  |  v → grep selection in buffers    │
 -- │ F11     : n → copy repo-rel path | v → repo-rel path + line range    │
 -- │ S-F11   : n → copy-path menu (abs / rel / name / ~)                  │
 -- │ F12     : n → resume last Snacks picker search                       │
@@ -57,13 +57,14 @@ local function cycle_diffview_layout()
   require("diffview.actions").cycle_layout()
 end
 
--- git grep the visual selection with whole-word matching (-w passed to git grep)
+-- git grep the visual selection literally, whole-word only. -F treats the text
+-- as a fixed string (so parens/dots aren't regex), -w restricts to whole words.
 local function git_grep_selection_word()
   vim.cmd('noau normal! "yy')
   local text = vim.fn.getreg("y")
   Snacks.picker.git_grep({
     search = text,
-    cmd_args = { "-w" },
+    cmd_args = { "-w", "-F" },
   })
 end
 
@@ -126,7 +127,8 @@ end
 map("n", "<S-F3>", next_diff_file, { desc = "Next File (Diffview)" })
 map("n", "<F15>", next_diff_file, { desc = "Next File (Diffview)" })
 
--- F4: git grep. Normal → search string; visual → exact word from selection.
+-- F4: git grep. Normal → regex search string; visual → literal whole-word match
+-- of the selection (see git_grep_selection_word).
 map("n", "<F4>", function()
   Snacks.picker.git_grep()
 end, { desc = "Search String (Git tracked)" })
@@ -197,6 +199,21 @@ end, { desc = "Document Symbols (Current File)" })
 map("n", "<F9>", function()
   require("config.git_annotate").toggle()
 end, { desc = "Toggle Git Annotate Panel" })
+
+-- F10: grep across open buffers (like F4, but scoped to loaded buffers instead
+-- of git-tracked files). Normal → prompt for the search string; visual → grep
+-- the selection immediately.
+map("n", "<F10>", function()
+  Snacks.picker.grep_buffers()
+end, { desc = "Grep Open Buffers" })
+
+map("v", "<F10>", function()
+  vim.cmd('noau normal! "yy')
+  local text = vim.fn.getreg("y")
+  -- regex = false → rg --fixed-strings, so the selection matches literally
+  -- (e.g. "oncomplete()" isn't treated as a regex with an empty group).
+  Snacks.picker.grep_buffers({ search = text, regex = false })
+end, { desc = "Grep selection in Open Buffers" })
 
 -- F11: copy the repo-relative path of the current file. In visual mode the
 -- selected line range is appended (path:start or path:start-end).
