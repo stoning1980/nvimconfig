@@ -12,7 +12,64 @@ local state = {
   win = nil, --- @type integer? annotate window id
   buf = nil, --- @type integer? annotate buffer id
   src_win = nil, --- @type integer? source window id
+  job = nil, --- @type vim.SystemObj? in-flight `git blame` handle
+  spinner_win = nil, --- @type integer? progress spinner window id
+  spinner_timer = nil, --- @type uv.uv_timer_t? spinner animation timer
 }
+
+local SPINNER = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
+
+-- Floating spinner shown while `git blame` runs so the user knows work is in
+-- flight (blame can take seconds on a huge repo). Anchored top-right.
+local function start_spinner(msg)
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[buf].bufhidden = "wipe"
+  local function frame(sym)
+    return " " .. sym .. " " .. msg .. " "
+  end
+  local text = frame(SPINNER[1])
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, { text })
+  local win = vim.api.nvim_open_win(buf, false, {
+    relative = "editor",
+    anchor = "NE",
+    row = 1,
+    col = vim.o.columns - 1,
+    width = vim.fn.strdisplaywidth(text),
+    height = 1,
+    style = "minimal",
+    border = "rounded",
+    focusable = false,
+    zindex = 200,
+    noautocmd = true,
+  })
+  vim.wo[win].winhl = "Normal:NormalFloat"
+  local i = 1
+  local timer = assert(vim.uv.new_timer())
+  timer:start(
+    80,
+    80,
+    vim.schedule_wrap(function()
+      if not (buf and vim.api.nvim_buf_is_valid(buf)) then
+        return
+      end
+      i = i % #SPINNER + 1
+      vim.api.nvim_buf_set_lines(buf, 0, -1, false, { frame(SPINNER[i]) })
+    end)
+  )
+  state.spinner_win, state.spinner_timer = win, timer
+end
+
+local function stop_spinner()
+  if state.spinner_timer then
+    state.spinner_timer:stop()
+    state.spinner_timer:close()
+    state.spinner_timer = nil
+  end
+  if state.spinner_win and vim.api.nvim_win_is_valid(state.spinner_win) then
+    vim.api.nvim_win_close(state.spinner_win, true)
+  end
+  state.spinner_win = nil
+end
 
 -- Distinct foreground colors so adjacent commits are visually separable, the
 -- way Android Studio tints its annotate gutter.
@@ -101,6 +158,11 @@ local function render(commits, entries)
 end
 
 function M.close()
+  if state.job then
+    state.job:kill("sigterm")
+    state.job = nil
+  end
+  stop_spinner()
   if state.win and vim.api.nvim_win_is_valid(state.win) then
     vim.api.nvim_win_close(state.win, true)
   end
@@ -111,26 +173,12 @@ function M.close()
   state.win, state.buf, state.src_win = nil, nil, nil
 end
 
-function M.open()
-  local src_win = vim.api.nvim_get_current_win()
-  local src_buf = vim.api.nvim_win_get_buf(src_win)
-  local file = vim.api.nvim_buf_get_name(src_buf)
-  if file == "" then
-    vim.notify("No file in current buffer", vim.log.levels.WARN, { title = "Git Annotate" })
-    return
-  end
-  if vim.bo[src_buf].modified then
-    vim.notify(
-      "Buffer has unsaved changes; blame reflects the file on disk",
-      vim.log.levels.WARN,
-      { title = "Git Annotate" }
-    )
-  end
-
-  local dir = vim.fn.fnamemodify(file, ":h")
-  local out = vim.fn.systemlist({ "git", "-C", dir, "blame", "--line-porcelain", "--", file })
-  if vim.v.shell_error ~= 0 then
-    vim.notify("git blame failed: " .. table.concat(out, " "), vim.log.levels.ERROR, { title = "Git Annotate" })
+-- Build the annotate split from parsed blame output. Runs after the async
+-- `git blame` finishes, so it re-checks that the source window still shows the
+-- same buffer (the user may have navigated away while blame was running).
+local function build_panel(src_win, src_buf, out)
+  if not vim.api.nvim_win_is_valid(src_win) or vim.api.nvim_win_get_buf(src_win) ~= src_buf then
+    vim.notify("Buffer changed before blame finished; cancelled", vim.log.levels.WARN, { title = "Git Annotate" })
     return
   end
 
@@ -144,6 +192,7 @@ function M.open()
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.bo[buf].modifiable = false
 
+  vim.api.nvim_set_current_win(src_win)
   vim.cmd("leftabove vsplit")
   local win = vim.api.nvim_get_current_win()
   vim.api.nvim_win_set_buf(win, buf)
@@ -180,8 +229,45 @@ function M.open()
   vim.cmd("syncbind")
 end
 
+function M.open()
+  local src_win = vim.api.nvim_get_current_win()
+  local src_buf = vim.api.nvim_win_get_buf(src_win)
+  local file = vim.api.nvim_buf_get_name(src_buf)
+  if file == "" then
+    vim.notify("No file in current buffer", vim.log.levels.WARN, { title = "Git Annotate" })
+    return
+  end
+  if vim.bo[src_buf].modified then
+    vim.notify(
+      "Buffer has unsaved changes; blame reflects the file on disk",
+      vim.log.levels.WARN,
+      { title = "Git Annotate" }
+    )
+  end
+
+  local dir = vim.fn.fnamemodify(file, ":h")
+  -- Run blame off the main loop so the editor stays responsive on huge repos;
+  -- a spinner float signals that work is in progress. build_panel runs on the
+  -- scheduled callback once output is ready.
+  start_spinner("Computing git blame…")
+  state.job = vim.system(
+    { "git", "-C", dir, "blame", "--line-porcelain", "--", file },
+    { text = true },
+    vim.schedule_wrap(function(res)
+      state.job = nil
+      stop_spinner()
+      if res.code ~= 0 then
+        local err = (res.stderr and res.stderr ~= "") and res.stderr or "unknown error"
+        vim.notify("git blame failed: " .. err, vim.log.levels.ERROR, { title = "Git Annotate" })
+        return
+      end
+      build_panel(src_win, src_buf, vim.split(res.stdout or "", "\n"))
+    end)
+  )
+end
+
 function M.toggle()
-  if state.win and vim.api.nvim_win_is_valid(state.win) then
+  if (state.win and vim.api.nvim_win_is_valid(state.win)) or state.job then
     M.close()
   else
     M.open()

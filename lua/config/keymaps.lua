@@ -16,7 +16,7 @@
 -- │ F9      : n → send file / v → send selection to AI agent (codechat)  │
 -- │ F10     : n → document symbols of current file (LSP / Treesitter)    │
 -- │ F11     : n → copy repo-rel path | v → repo-rel path + line range    │
--- │ S-F11   : n → copy-path menu (abs / rel / name / ~)                  │
+-- │ S-F11   : n/v/i → copy-path menu (abs / rel / name / ~)              │
 -- │ F12     : n → resume last Snacks picker search                       │
 -- └─────────────────────────────────────────────────────────────────────┘
 
@@ -237,7 +237,8 @@ map("v", "<F11>", function()
 end, { desc = "Copy repo-relative path + line range" })
 
 -- Shift+F11: pick which representation of the current file path to copy.
--- Terminals emit shifted F11 as <F23>, so map both spellings.
+-- Terminals emit shifted F11 as <F23>, so map both spellings. Available in
+-- normal, visual and insert modes (the menu reads the file, not the selection).
 local function copy_path_menu()
   local abs = vim.fn.expand("%:p")
   if abs == "" then
@@ -264,8 +265,8 @@ local function copy_path_menu()
   end)
 end
 
-map("n", "<S-F11>", copy_path_menu, { desc = "Copy path (menu)" })
-map("n", "<F23>", copy_path_menu, { desc = "Copy path (menu)" })
+map({ "n", "v", "i" }, "<S-F11>", copy_path_menu, { desc = "Copy path (menu)" })
+map({ "n", "v", "i" }, "<F23>", copy_path_menu, { desc = "Copy path (menu)" })
 
 -- Map F12 to resume the last Snacks picker search
 -- Map F12 to resume the last Snacks picker search
