@@ -3,7 +3,7 @@
 -- file/selection + an optional typed comment into its input box.
 --   <F7>  -> send to the active agent (normal: whole file, visual: selection).
 --           On first use it pops a picker (ttadk Claude / ttadk Cursor /
---           Claude / Cursor) and remembers the choice across restarts. Change
+--           Claude / Cursor / Relay) and remembers the choice across restarts. Change
 --           it later with :CodeChatPick.
 -- Requires the respective CLI installed (and logged in once).
 return {
@@ -32,6 +32,10 @@ return {
     "CursorChatSend",
     "CursorChatSendFile",
     "CursorChatStop",
+    "RelayChat",
+    "RelayChatSend",
+    "RelayChatSendFile",
+    "RelayChatStop",
   },
   keys = {
     -- The one shortcut: send to the remembered agent (picker on first use).
@@ -50,11 +54,12 @@ return {
     -- `login = true` runs the pipeline via an interactive login shell that
     -- sources your rc files. Set `login_shell` if your shell isn't vim.o.shell.
     --
-    -- Four candidates are offered in the picker (in `order`):
+    -- Five candidates are offered in the picker (in `order`):
     --   1. ttadk Claude  -- Claude via the `ttadk` wrapper
     --   2. ttadk Cursor  -- Cursor CLI via the `ttadk` wrapper
     --   3. Claude        -- the plain `claude` binary (from config.lua defaults)
     --   4. Cursor        -- the plain `cursor-agent` binary (from defaults)
+    --   5. Relay         -- the plain `relay` binary (launched directly in bash)
     -- ── Agent parameter reference ─────────────────────────────────────
     -- label          : display name shown in the :CodeChatPick picker.
     -- command_prefix : Vim command namespace; generates four commands:
@@ -110,6 +115,12 @@ return {
         order = 4,
         command = vim.fn.expand("~/.local/bin/cursor-agent"),
         fallbacks = { "cursor-agent", "agent" },
+      },
+      relay = {
+        label = "Relay",
+        command_prefix = "RelayChat",
+        order = 5,
+        command = "relay",
       },
     },
   },
