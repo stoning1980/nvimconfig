@@ -2,6 +2,8 @@
 --   :Pdf          compare HEAD with a previous commit (Tab: last 20 ancestors)
 --   :CodeReview   compare HEAD with a local or remote branch (Tab: ordered branches)
 --   :CompareFiles diff two repo files picked from a fuzzy list (Tab to select two)
+--   :CompareVersionFile pick a version (Tab to complete), then a file, to diff
+--                 HEAD's copy of that file against the chosen version's copy
 local M = {}
 
 local function notify(msg, level)
@@ -248,6 +250,55 @@ function M.compare_files()
   })
 end
 
+-- Compare a single file's HEAD copy against its copy at a chosen version.
+--
+-- Flow mirrors :CodeReview then :CompareFiles — the argument is a "(NN)
+-- <branch>" completion item (see complete_branches) or a raw revision, used as
+-- the version. A Snacks git_files picker (same .kt/.java/.xml scope as
+-- compare_files) then selects one file; on confirm Diffview opens rev..HEAD
+-- limited to that file, so the left side is the version and the right is HEAD.
+function M.compare_version_file(arg)
+  if not (Snacks and Snacks.picker) then
+    notify("Snacks picker not available", vim.log.levels.ERROR)
+    return
+  end
+  local root = repo_root()
+  if not root then
+    notify("Not a git repo", vim.log.levels.ERROR)
+    return
+  end
+  if not arg or arg == "" then
+    notify("Provide a version (Tab to complete)", vim.log.levels.WARN)
+    return
+  end
+
+  -- Strip the "(NN) " prefix from a completion item, if present.
+  local rev = arg:match("^%(%d+%)%s+(.+)$") or arg:match("^%S+")
+
+  local allowed = { kt = true, java = true, xml = true }
+
+  Snacks.picker.git_files({
+    cwd = root,
+    untracked = true,
+    title = "Compare " .. rev .. " vs HEAD (Enter: diff file)",
+    transform = function(item)
+      local ext = (item.file or item.text or ""):match("%.([%w]+)$")
+      if ext and allowed[ext:lower()] then
+        return item
+      end
+      return false
+    end,
+    confirm = function(picker, item)
+      if not item then
+        notify("Select a file", vim.log.levels.WARN)
+        return
+      end
+      picker:close()
+      vim.cmd("DiffviewOpen " .. rev .. "..HEAD -- " .. vim.fn.fnameescape(item_path(item)))
+    end,
+  })
+end
+
 function M.setup()
   vim.api.nvim_create_user_command("Pdf", function(opts)
     M.diff_previous_commit(opts.args)
@@ -274,6 +325,16 @@ function M.setup()
   end, {
     nargs = 0,
     desc = "Diff two working-tree files from this repo (picker)",
+  })
+
+  vim.api.nvim_create_user_command("CompareVersionFile", function(opts)
+    M.compare_version_file(opts.args)
+  end, {
+    nargs = "*",
+    complete = function()
+      return M.complete_branches()
+    end,
+    desc = "Diffview: diff HEAD's file against a chosen version's file",
   })
 end
 
