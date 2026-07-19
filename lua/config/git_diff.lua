@@ -1,6 +1,7 @@
 -- Diffview review commands:
---   :Pdf         compare HEAD with a previous commit (Tab: last 20 ancestors)
---   :CodeReview  compare HEAD with a local or remote branch (Tab: ordered branches)
+--   :Pdf          compare HEAD with a previous commit (Tab: last 20 ancestors)
+--   :CodeReview   compare HEAD with a local or remote branch (Tab: ordered branches)
+--   :CompareFiles diff two repo files picked from a fuzzy list (Tab to select two)
 local M = {}
 
 local function notify(msg, level)
@@ -178,6 +179,75 @@ function M.review_code(branch)
   notify("Provide a branch (Tab to complete)", vim.log.levels.WARN)
 end
 
+-- Absolute path of the current repo root, or nil when not in a git repo.
+local function repo_root()
+  local out = git_lines({ "git", "rev-parse", "--show-toplevel" })
+  return out and out[1] or nil
+end
+
+-- Absolute path of a Snacks picker item (git_files gives item.file relative to
+-- item.cwd). Prefer the picker's own resolver when present.
+local function item_path(item)
+  local util = Snacks.picker and Snacks.picker.util
+  if util and util.path then
+    return util.path(item)
+  end
+  local f = item.file or item.text or ""
+  if f:sub(1, 1) == "/" then
+    return f
+  end
+  return (item.cwd or vim.uv.cwd()) .. "/" .. f
+end
+
+-- Open two files side by side in a fresh tab, in diff mode.
+local function open_diff(pa, pb)
+  vim.cmd("tabnew " .. vim.fn.fnameescape(pa))
+  vim.cmd("diffthis")
+  vim.cmd("vertical diffsplit " .. vim.fn.fnameescape(pb))
+end
+
+-- Compare two files from the current repo side by side.
+--
+-- Opens a Snacks git_files picker scoped to the repo (tracked + new/untracked
+-- files), limited to .kt/.java/.xml sources: type to filter, press Tab to
+-- toggle-select files, then confirm. Exactly two files must be selected; on
+-- confirm they open in a new tab as a vertical diff.
+function M.compare_files()
+  if not (Snacks and Snacks.picker) then
+    notify("Snacks picker not available", vim.log.levels.ERROR)
+    return
+  end
+  local root = repo_root()
+  if not root then
+    notify("Not a git repo", vim.log.levels.ERROR)
+    return
+  end
+
+  local allowed = { kt = true, java = true, xml = true }
+
+  Snacks.picker.git_files({
+    cwd = root,
+    untracked = true,
+    title = "Compare Files (Tab: select two, Enter: diff)",
+    transform = function(item)
+      local ext = (item.file or item.text or ""):match("%.([%w]+)$")
+      if ext and allowed[ext:lower()] then
+        return item
+      end
+      return false
+    end,
+    confirm = function(picker)
+      local sel = picker:selected({ fallback = true })
+      if #sel ~= 2 then
+        notify("Select exactly two files (Tab to toggle)", vim.log.levels.WARN)
+        return
+      end
+      picker:close()
+      open_diff(item_path(sel[1]), item_path(sel[2]))
+    end,
+  })
+end
+
 function M.setup()
   vim.api.nvim_create_user_command("Pdf", function(opts)
     M.diff_previous_commit(opts.args)
@@ -197,6 +267,13 @@ function M.setup()
       return M.complete_branches()
     end,
     desc = "Diffview: compare HEAD with a local/remote branch",
+  })
+
+  vim.api.nvim_create_user_command("CompareFiles", function()
+    M.compare_files()
+  end, {
+    nargs = 0,
+    desc = "Diff two working-tree files from this repo (picker)",
   })
 end
 
