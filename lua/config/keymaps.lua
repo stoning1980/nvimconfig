@@ -87,6 +87,9 @@ map("n", "<F14>", cycle_diffview_layout, { desc = "Toggle Diffview Layout (H/V)"
 -- (HEAD vs local/remote branch, with branch-name completion) commands.
 require("config.git_diff").setup()
 
+-- Register the `:Goto` project switcher (recents + autojump.txt list).
+require("config.goto").setup()
+
 -- F3 / Shift+F3: Jump to next / previous diff hunk — only inside a Diffview.
 -- The ]c / [c motions only work in a diff-mode window, so if focus is on the
 -- file panel (or anywhere else) we jump into a diff window first. Prefer the
