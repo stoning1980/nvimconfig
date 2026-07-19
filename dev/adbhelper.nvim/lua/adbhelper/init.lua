@@ -21,7 +21,15 @@ local function get_visual_selection()
     return ""
   end
 
-  local lines = vim.api.nvim_buf_get_text(0, start_row - 1, start_col, end_row - 1, end_col + 1, {})
+  -- Clamp the end column to the end row's length. The '> mark is inclusive, so
+  -- normally we add 1 to include the character under it. But for linewise (V)
+  -- selections '> column is v:maxcol (a huge sentinel), which would otherwise
+  -- run past the buffer and error. Multi-line selections come back as multiple
+  -- lines and are joined with "\n" (sent as Enter keyevents by input.lua).
+  local end_line = vim.api.nvim_buf_get_lines(0, end_row - 1, end_row, false)[1] or ""
+  end_col = math.min(end_col + 1, #end_line)
+
+  local lines = vim.api.nvim_buf_get_text(0, start_row - 1, start_col, end_row - 1, end_col, {})
   return table.concat(lines, "\n")
 end
 
@@ -40,6 +48,23 @@ function M.send_selection()
     input.send_text(serial, text, function()
       vim.notify("Text sent to " .. serial, vim.log.levels.INFO, { title = "AdbHelper" })
     end)
+  end)
+end
+
+--- Show the adb action menu (device/app pickers follow the chosen action).
+function M.action_menu()
+  local ui = require("adbhelper.ui")
+  local actions = require("adbhelper.actions")
+  local items = {
+    { text = "A/B debug menu", action = "ab" },
+    { text = "Relaunch app", action = "relaunch" },
+    { text = "Kill TikTok family app", action = "kill" },
+    { text = "Clear TikTok family app", action = "clear" },
+  }
+  ui.select(items, { title = "AdbHelper" }, function(item)
+    if item then
+      actions.run(item.action)
+    end
   end)
 end
 

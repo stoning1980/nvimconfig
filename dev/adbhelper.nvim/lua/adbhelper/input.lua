@@ -73,11 +73,44 @@ local function build_commands(serial, text)
   return cmds
 end
 
+-- Only bother showing a progress indicator when there are enough steps that the
+-- send takes noticeable time (each step is a separate adb process spawn).
+local PROGRESS_THRESHOLD = 8
+local PROGRESS_ID = "adbhelper_send"
+
+--- Build a progress reporter. Returns update(done, total) and finish() no-ops
+--- when the total is small or no notifier backend is available.
+---@param total number
+local function make_progress(total)
+  if total < PROGRESS_THRESHOLD or not (Snacks and Snacks.notifier) then
+    return function() end, function() end
+  end
+
+  local bar_width = 20
+  local function update(done)
+    local ratio = done / total
+    local filled = math.floor(bar_width * ratio + 0.5)
+    local bar = string.rep("█", filled) .. string.rep("░", bar_width - filled)
+    Snacks.notifier.notify(string.format("%s  %d/%d", bar, done, total), "info", {
+      id = PROGRESS_ID,
+      title = "Sending text to device",
+      timeout = false,
+    })
+  end
+
+  local function finish()
+    Snacks.notifier.hide(PROGRESS_ID)
+  end
+
+  return update, finish
+end
+
 --- Run a list of commands sequentially (each waits for the prior).
 ---@param cmds string[][] list of argv tables
 ---@param idx number current index
+---@param on_step fun(done: number) progress callback (commands completed)
 ---@param on_done fun()
-local function run_sequential(cmds, idx, on_done)
+local function run_sequential(cmds, idx, on_step, on_done)
   if idx > #cmds then
     if on_done then
       on_done()
@@ -89,7 +122,8 @@ local function run_sequential(cmds, idx, on_done)
       if result.code ~= 0 then
         vim.notify("adb command failed: " .. (result.stderr or "unknown"), vim.log.levels.WARN, { title = "AdbHelper" })
       end
-      run_sequential(cmds, idx + 1, on_done)
+      on_step(idx)
+      run_sequential(cmds, idx + 1, on_step, on_done)
     end)
   end)
 end
@@ -104,11 +138,20 @@ function M.send_text(serial, text, on_done)
     return
   end
   local cmds = build_commands(serial, text)
-  if #cmds == 0 then
+  local total = #cmds
+  if total == 0 then
     vim.notify("No sendable characters in selection", vim.log.levels.WARN, { title = "AdbHelper" })
     return
   end
-  run_sequential(cmds, 1, on_done)
+
+  local update, finish = make_progress(total)
+  update(0)
+  run_sequential(cmds, 1, update, function()
+    finish()
+    if on_done then
+      on_done()
+    end
+  end)
 end
 
 return M
