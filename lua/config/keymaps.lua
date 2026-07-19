@@ -95,7 +95,13 @@ require("config.git_diff").setup()
 local function goto_diff_hunk(motion)
   local view = diffview_view()
   if not view then
-    vim.notify("Not in a Diffview", vim.log.levels.ERROR, { title = "Diffview" })
+    -- Outside Diffview, still support a plain diff-mode window (e.g. the
+    -- :CompareFiles / :diffsplit view): the ]c / [c motions work there directly.
+    if vim.wo.diff then
+      vim.cmd("normal! " .. motion)
+    else
+      vim.notify("Not in a diff view", vim.log.levels.ERROR, { title = "Diffview" })
+    end
     return
   end
   local layout = view.cur_layout
