@@ -33,22 +33,39 @@ local function get_visual_selection()
   return table.concat(lines, "\n")
 end
 
---- Send the current visual selection to an Android device.
+--- Pick a device and send the given text to it.
+---@param text string
+local function send(text)
+  local device = require("adbhelper.device")
+  local input = require("adbhelper.input")
+  device.pick_device(function(serial)
+    input.send_text(serial, text, function()
+      vim.notify("Text sent to " .. serial, vim.log.levels.INFO, { title = "AdbHelper" })
+    end)
+  end)
+end
+
+--- Send the current visual selection to an Android device. The selection is
+--- also copied to the system clipboard so a subsequent normal-mode send resends
+--- the same text.
 function M.send_selection()
   local text = get_visual_selection()
   if text == "" then
     vim.notify("No text selected", vim.log.levels.WARN, { title = "AdbHelper" })
     return
   end
+  vim.fn.setreg("+", text)
+  send(text)
+end
 
-  local device = require("adbhelper.device")
-  local input = require("adbhelper.input")
-
-  device.pick_device(function(serial)
-    input.send_text(serial, text, function()
-      vim.notify("Text sent to " .. serial, vim.log.levels.INFO, { title = "AdbHelper" })
-    end)
-  end)
+--- Send the current system-clipboard contents to an Android device.
+function M.send_clipboard()
+  local text = vim.fn.getreg("+")
+  if text == nil or text == "" then
+    vim.notify("No text to send", vim.log.levels.WARN, { title = "AdbHelper" })
+    return
+  end
+  send(text)
 end
 
 --- Show the adb action menu (device/app pickers follow the chosen action).

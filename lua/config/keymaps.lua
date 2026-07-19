@@ -2,13 +2,15 @@
 -- Default keymaps that are always set: https://github.com/LazyVim/LazyVim/blob/main/lua/lazyvim/config/keymaps.lua
 -- Add any additional keymaps here
 --
--- ┌─ Function key cheatsheet (custom mappings in this file) ─────────────┐
+-- ┌─ Function key cheatsheet (this file + plugin keys) ──────────────────┐
 -- │ F1      : n → toggle Diffview (git index diff)                       │
 -- │ F2      : n → toggle Diffview file panel                             │
--- │ S-F1/F2 : n → toggle Diffview layout (side-by-side ↔ stacked)       │
+-- │ S-F1    : n → toggle git annotate panel (per-line author/date)       │
+-- │ S-F2    : n → toggle Diffview layout (side-by-side ↔ stacked)        │
 -- │ F3      : n → next diff hunk (Diffview only; error else)             │
 -- │ S-F3    : n → next file entry (Diffview only)                        │
--- │ F4      : n → toggle git annotate panel (per-line author/date)      │
+-- │ F4      : v → send selection | n → send clipboard to Android (adb)   │
+-- │ S-F4    : n → AdbHelper action menu (A/B debug/relaunch/kill/clear)  │
 -- │ F5      : n → grep open buffers  |  v → grep selection in buffers    │
 -- │ F6      : n → git grep string  |  v → git grep literal word (sel.)   │
 -- │ F7      : n → find git files   |  v → find git files by selection    │
@@ -19,6 +21,7 @@
 -- │ F11     : n → copy repo-rel path | v → repo-rel path + line range    │
 -- │ S-F11   : n/v/i → copy-path menu (abs / rel / name / ~)              │
 -- │ F12     : n → resume last Snacks picker search                       │
+-- │ Note: terminals emit S-Fn as F(n+12): S-F1=F13 S-F2=F14 S-F4=F16 …   │
 -- └─────────────────────────────────────────────────────────────────────┘
 
 local map = vim.keymap.set
@@ -75,11 +78,9 @@ map("n", "<F1>", toggle_diffview, { desc = "Toggle Diffview" })
 -- F2: Toggle the Diffview file panel (maximizes space for the code diff).
 map("n", "<F2>", "<cmd>DiffviewToggleFiles<cr>", { desc = "Toggle Diffview File Panel" })
 
--- Shift+F1 / Shift+F2: Toggle Diffview layout (H/V). Terminals emit shifted
--- function keys as <F13>/<F14>, so map both spellings.
-map("n", "<S-F1>", cycle_diffview_layout, { desc = "Toggle Diffview Layout (H/V)" })
+-- Shift+F2: Toggle Diffview layout (H/V). Terminals emit shifted F2 as <F14>,
+-- so map both spellings.
 map("n", "<S-F2>", cycle_diffview_layout, { desc = "Toggle Diffview Layout (H/V)" })
-map("n", "<F13>", cycle_diffview_layout, { desc = "Toggle Diffview Layout (H/V)" })
 map("n", "<F14>", cycle_diffview_layout, { desc = "Toggle Diffview Layout (H/V)" })
 
 -- Register the `:Pdf` (HEAD vs previous commit) and `:CodeReview`
@@ -211,12 +212,15 @@ end
 vim.keymap.set("n", "<S-F10>", clear_marks, { desc = "Clear all marks" })
 vim.keymap.set("n", "<F22>", clear_marks, { desc = "Clear all marks" })
 
--- F4: toggle an Android Studio / JetBrains style "Annotate" panel — a
+-- Shift+F1: toggle an Android Studio / JetBrains style "Annotate" panel — a
 -- scroll-bound left split showing author + date for every line. Press q inside
--- the panel (or F4 again) to close it.
-map("n", "<F4>", function()
+-- the panel (or Shift+F1 again) to close it. Terminals emit shifted F1 as
+-- <F13>, so map both spellings.
+local function toggle_git_annotate()
   require("config.git_annotate").toggle()
-end, { desc = "Toggle Git Annotate Panel" })
+end
+map("n", "<S-F1>", toggle_git_annotate, { desc = "Toggle Git Annotate Panel" })
+map("n", "<F13>", toggle_git_annotate, { desc = "Toggle Git Annotate Panel" })
 
 -- F5: grep across open buffers (like F6, but scoped to loaded buffers instead
 -- of git-tracked files). Normal → prompt for the search string; visual → grep
