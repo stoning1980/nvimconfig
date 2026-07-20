@@ -9,7 +9,7 @@
 -- │ S-F2    : n → toggle Diffview layout (side-by-side ↔ stacked)        │
 -- │ F3      : n → next diff hunk (Diffview only; error else)             │
 -- │ S-F3    : n → next file entry (Diffview only)                        │
--- │ F4      : v → send selection | n → send clipboard to Android (adb)   │
+-- │ F4      : v → selection | n → word under cursor / clipboard (adb)    │
 -- │ S-F4    : n → AdbHelper action menu (A/B debug/relaunch/kill/clear)  │
 -- │ F5      : n → grep open buffers  |  v → grep selection in buffers    │
 -- │ F6      : n → git grep string  |  v → git grep literal word (sel.)   │

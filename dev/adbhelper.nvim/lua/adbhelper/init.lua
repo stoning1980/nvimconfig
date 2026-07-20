@@ -58,9 +58,14 @@ function M.send_selection()
   send(text)
 end
 
---- Send the current system-clipboard contents to an Android device.
+--- Send text to an Android device from normal mode. Prefers the word under the
+--- cursor; when there is no word under the cursor, falls back to the system
+--- clipboard contents.
 function M.send_clipboard()
-  local text = vim.fn.getreg("+")
+  local text = vim.fn.expand("<cword>")
+  if text == nil or text == "" then
+    text = vim.fn.getreg("+")
+  end
   if text == nil or text == "" then
     vim.notify("No text to send", vim.log.levels.WARN, { title = "AdbHelper" })
     return

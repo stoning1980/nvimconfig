@@ -6,12 +6,13 @@ return {
   name = "adbhelper.nvim",
   event = "VeryLazy",
   cmd = { "AdbSendText", "AdbSendClipboard", "AdbMenu" },
-  -- F4: send to Android device (visual → selection, normal → clipboard).
+  -- F4: send to Android device (visual → selection, normal → word under cursor,
+  -- falling back to the system clipboard when there is no word under the cursor).
   -- Shift+F4 opens the action menu; terminals emit shifted F4 as <F16>, so map
   -- both spellings.
   keys = {
     { "<F4>", ":<C-u>AdbSendText<cr>", mode = "v", desc = "Send selection to Android device" },
-    { "<F4>", "<cmd>AdbSendClipboard<cr>", mode = "n", desc = "Send clipboard to Android device" },
+    { "<F4>", "<cmd>AdbSendClipboard<cr>", mode = "n", desc = "Send word/clipboard to Android device" },
     { "<S-F4>", "<cmd>AdbMenu<cr>", mode = "n", desc = "AdbHelper action menu" },
     { "<F16>", "<cmd>AdbMenu<cr>", mode = "n", desc = "AdbHelper action menu" },
   },
@@ -23,7 +24,7 @@ return {
     end, { range = true, desc = "Send visual selection to Android device via adb" })
     vim.api.nvim_create_user_command("AdbSendClipboard", function()
       adb.send_clipboard()
-    end, { desc = "Send system clipboard to Android device via adb" })
+    end, { desc = "Send word under cursor (or system clipboard) to Android device via adb" })
     vim.api.nvim_create_user_command("AdbMenu", function()
       adb.action_menu()
     end, { desc = "AdbHelper: pick an adb action (A/B debug, kill, clear, relaunch)" })
