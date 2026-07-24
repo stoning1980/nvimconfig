@@ -9,7 +9,7 @@
 -- │ S-F2    : n → toggle Diffview layout (side-by-side ↔ stacked)        │
 -- │ F3      : n → next diff hunk (Diffview only; error else)             │
 -- │ S-F3    : n → next file entry (Diffview only)                        │
--- │ F4      : v → selection | n → word under cursor / clipboard (adb)    │
+-- │ F4      : n → resume last Snacks picker search                       │
 -- │ S-F4    : n → AdbHelper action menu (A/B debug/relaunch/kill/clear)  │
 -- │ F5      : n → grep open buffers  |  v → grep selection in buffers    │
 -- │ F6      : n → git grep string  |  v → git grep literal word (sel.)   │
@@ -20,7 +20,7 @@
 -- │ S-F10   : n → clear all interestingwords marks                       │
 -- │ F11     : n → copy repo-rel path | v → repo-rel path + line range    │
 -- │ S-F11   : n/v/i → copy-path menu (abs / rel / name / ~)              │
--- │ F12     : n → resume last Snacks picker search                       │
+-- │ F12     : v → selection | n → word under cursor / clipboard (adb)    │
 -- │ Note: terminals emit S-Fn as F(n+12): S-F1=F13 S-F2=F14 S-F4=F16 …   │
 -- └─────────────────────────────────────────────────────────────────────┘
 
@@ -304,8 +304,42 @@ end
 map({ "n", "v", "i" }, "<S-F11>", copy_path_menu, { desc = "Copy path (menu)" })
 map({ "n", "v", "i" }, "<F23>", copy_path_menu, { desc = "Copy path (menu)" })
 
--- Map F12 to resume the last Snacks picker search
--- Map F12 to resume the last Snacks picker search
-vim.keymap.set("n", "<F12>", function()
+-- Map F4 to resume the last Snacks picker search
+vim.keymap.set("n", "<F4>", function()
   Snacks.picker.resume()
 end, { desc = "Resume Last Search" })
+
+-- Visual-mode pickers seeded with the selection --------------------------------
+-- LazyVim binds <leader><space>, <leader>, and <leader>/ in normal mode only, so
+-- in visual mode they fall back to their prefix (e.g. `,` = repeat find-char) and
+-- appear "broken". These wrappers grab the selection and open the same pickers
+-- pre-filled with it. Capturing via getregion + a synchronous <Esc> mirrors the
+-- <F5> handler above: a "yy yank inside a visual mapping can strand nvim in
+-- operator-pending, and its embedded newlines break fixed-string searches.
+local function visual_selection_text()
+  local region = vim.fn.getregion(vim.fn.getpos("v"), vim.fn.getpos("."), { type = vim.fn.mode() })
+  vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "nx", false)
+  -- Picker inputs are single-line; if several lines are selected, use the first.
+  return region[1] or ""
+end
+
+-- <leader><space>: find files, pre-filtered by the selection (matches filename).
+map("x", "<leader><space>", function()
+  local text = visual_selection_text()
+  Snacks.picker.files({ pattern = text })
+end, { desc = "Find Files (selection)" })
+
+-- <leader>,: switch buffer, pre-filtered by the selection (matches buffer name).
+map("x", "<leader>,", function()
+  local text = visual_selection_text()
+  Snacks.picker.buffers({ pattern = text })
+end, { desc = "Buffers (selection)" })
+
+-- <leader>/: grep the selection literally (regex = false → rg --fixed-strings).
+map("x", "<leader>/", function()
+  local text = visual_selection_text()
+  if text == "" then
+    return
+  end
+  Snacks.picker.grep({ search = text, regex = false, need_search = true })
+end, { desc = "Grep (selection)" })
