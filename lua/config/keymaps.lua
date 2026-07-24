@@ -10,10 +10,9 @@
 -- │ F3      : n → next diff hunk (Diffview only; error else)             │
 -- │ S-F3    : n → next file entry (Diffview only)                        │
 -- │ F4      : n → resume last Snacks picker search                       │
--- │ S-F4    : n → AdbHelper action menu (A/B debug/relaunch/kill/clear)  │
--- │ F5      : n → grep open buffers  |  v → grep selection in buffers    │
+-- │ F5      : n → find git files   |  v → find git files by selection    │
 -- │ F6      : n → git grep string  |  v → git grep literal word (sel.)   │
--- │ F7      : n → find git files   |  v → find git files by selection    │
+-- │ F7      : n → grep open buffers  |  v → grep selection in buffers    │
 -- │ F8      : v → send selection | n → send buffered files (claudeide)   │
 -- │ F9      : n → send file / v → send selection to AI agent (codechat)  │
 -- │ F10     : n → mark word / v → mark selection (interestingwords)      │
@@ -21,7 +20,8 @@
 -- │ F11     : n → copy repo-rel path | v → repo-rel path + line range    │
 -- │ S-F11   : n/v/i → copy-path menu (abs / rel / name / ~)              │
 -- │ F12     : v → selection | n → word under cursor / clipboard (adb)    │
--- │ Note: terminals emit S-Fn as F(n+12): S-F1=F13 S-F2=F14 S-F4=F16 …   │
+-- │ S-F12   : n → AdbHelper action menu (A/B debug/relaunch/kill/clear)  │
+-- │ Note: terminals emit S-Fn as F(n+12): S-F1=F13 S-F12=F24 …           │
 -- └─────────────────────────────────────────────────────────────────────┘
 
 local map = vim.keymap.set
@@ -145,13 +145,13 @@ map("n", "<F6>", function()
 end, { desc = "Search String (Git tracked)" })
 map("v", "<F6>", git_grep_selection_word, { desc = "Search exact word only (Git tracked)" })
 
--- <F7> ----------------------------------------------------------------
--- vim.keymap.set("n", "<F7>", "<leader>ff", { desc = "Find Files", remap = true })
-vim.keymap.set("n", "<F7>", function()
+-- <F5> ----------------------------------------------------------------
+-- vim.keymap.set("n", "<F5>", "<leader>ff", { desc = "Find Files", remap = true })
+vim.keymap.set("n", "<F5>", function()
   Snacks.picker.git_files()
 end, { desc = "Search Git Files" })
 
-vim.keymap.set("v", "<F7>", function()
+vim.keymap.set("v", "<F5>", function()
   -- 1. Copy selection to the 'y' register
   vim.cmd('noau normal! "yy')
   -- 2. Get the text from the register
@@ -225,18 +225,18 @@ end
 map("n", "<S-F1>", toggle_git_annotate, { desc = "Toggle Git Annotate Panel" })
 map("n", "<F13>", toggle_git_annotate, { desc = "Toggle Git Annotate Panel" })
 
--- F5: grep across open buffers (like F6, but scoped to loaded buffers instead
+-- F7: grep across open buffers (like F6, but scoped to loaded buffers instead
 -- of git-tracked files). Normal → prompt for the search string; visual → grep
 -- the selection immediately.
 -- need_search = true overrides the grep_buffers default (false), which would
 -- otherwise grep every line of every buffer with an empty pattern and keep
 -- re-ranking that streaming list — that churn resets the selection so <c-n>/
 -- <c-p> can't move it. Requiring a term yields a stable list like F6.
-map("n", "<F5>", function()
+map("n", "<F7>", function()
   Snacks.picker.grep_buffers({ need_search = true })
 end, { desc = "Grep Open Buffers" })
 
-map("v", "<F5>", function()
+map("v", "<F7>", function()
   -- Capture the selection before touching modes or registers. Grabbing it with a
   -- `"yy` yank inside a visual mapping is fragile: it can leave a dangling `y`
   -- operator (nvim gets stuck in operator-pending, "can't exit"), and it yanks
@@ -314,7 +314,7 @@ end, { desc = "Resume Last Search" })
 -- in visual mode they fall back to their prefix (e.g. `,` = repeat find-char) and
 -- appear "broken". These wrappers grab the selection and open the same pickers
 -- pre-filled with it. Capturing via getregion + a synchronous <Esc> mirrors the
--- <F5> handler above: a "yy yank inside a visual mapping can strand nvim in
+-- <F7> handler above: a "yy yank inside a visual mapping can strand nvim in
 -- operator-pending, and its embedded newlines break fixed-string searches.
 local function visual_selection_text()
   local region = vim.fn.getregion(vim.fn.getpos("v"), vim.fn.getpos("."), { type = vim.fn.mode() })

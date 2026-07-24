@@ -8,13 +8,13 @@ return {
   cmd = { "AdbSendText", "AdbSendClipboard", "AdbMenu" },
   -- F12: send to Android device (visual → selection, normal → word under cursor,
   -- falling back to the system clipboard when there is no word under the cursor).
-  -- Shift+F4 opens the action menu; terminals emit shifted F4 as <F16>, so map
-  -- both spellings.
+  -- Shift+F12 opens the action menu; terminals emit shifted F12 as <F24>, so
+  -- map both spellings.
   keys = {
     { "<F12>", ":<C-u>AdbSendText<cr>", mode = "v", desc = "Send selection to Android device" },
     { "<F12>", "<cmd>AdbSendClipboard<cr>", mode = "n", desc = "Send word/clipboard to Android device" },
-    { "<S-F4>", "<cmd>AdbMenu<cr>", mode = "n", desc = "AdbHelper action menu" },
-    { "<F16>", "<cmd>AdbMenu<cr>", mode = "n", desc = "AdbHelper action menu" },
+    { "<S-F12>", "<cmd>AdbMenu<cr>", mode = "n", desc = "AdbHelper action menu" },
+    { "<F24>", "<cmd>AdbMenu<cr>", mode = "n", desc = "AdbHelper action menu" },
   },
   config = function(_, opts)
     local adb = require("adbhelper")
