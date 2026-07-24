@@ -10,8 +10,8 @@
 -- │ F3      : n → next diff hunk (Diffview only; error else)             │
 -- │ S-F3    : n → next file entry (Diffview only)                        │
 -- │ F4      : n → resume last Snacks picker search                       │
--- │ F5      : n → find git files   |  v → find git files by selection    │
--- │ F6      : n → git grep string  |  v → git grep literal word (sel.)   │
+-- │ F5      : all modes → jump back (jumplist <C-o>)                     │
+-- │ F6      : all modes → jump forward (jumplist <C-i>)                  │
 -- │ F7      : n → grep open buffers  |  v → grep selection in buffers    │
 -- │ F8      : v → send selection | n → send buffered files (claudeide)   │
 -- │ F9      : n → send file / v → send selection to AI agent (codechat)  │
@@ -59,17 +59,6 @@ local function cycle_diffview_layout()
     return
   end
   require("diffview.actions").cycle_layout()
-end
-
--- git grep the visual selection literally, whole-word only. -F treats the text
--- as a fixed string (so parens/dots aren't regex), -w restricts to whole words.
-local function git_grep_selection_word()
-  vim.cmd('noau normal! "yy')
-  local text = vim.fn.getreg("y")
-  Snacks.picker.git_grep({
-    search = text,
-    cmd_args = { "-w", "-F" },
-  })
 end
 
 -- F1: Toggle Diffview.
@@ -138,27 +127,20 @@ end
 map("n", "<S-F3>", next_diff_file, { desc = "Next File (Diffview)" })
 map("n", "<F15>", next_diff_file, { desc = "Next File (Diffview)" })
 
--- F6: git grep. Normal → regex search string; visual → literal whole-word match
--- of the selection (see git_grep_selection_word).
-map("n", "<F6>", function()
-  Snacks.picker.git_grep()
-end, { desc = "Search String (Git tracked)" })
-map("v", "<F6>", git_grep_selection_word, { desc = "Search exact word only (Git tracked)" })
+-- F5 / F6: navigate the jumplist backward / forward, like an IDE's back/forward
+-- buttons. <C-o> / <C-i> are normal-mode motions, so from any other mode we first
+-- drop to normal with <C-\><C-N> (works from insert, visual, and terminal) and
+-- then perform the jump. Feeding the keys with noremap ("n") keeps <C-i> as the
+-- jumplist motion rather than an <expr>/remapped Tab.
+local function jumplist(motion)
+  return function()
+    local keys = vim.api.nvim_replace_termcodes("<C-\\><C-N>" .. motion, true, false, true)
+    vim.api.nvim_feedkeys(keys, "n", false)
+  end
+end
 
--- <F5> ----------------------------------------------------------------
--- vim.keymap.set("n", "<F5>", "<leader>ff", { desc = "Find Files", remap = true })
-vim.keymap.set("n", "<F5>", function()
-  Snacks.picker.git_files()
-end, { desc = "Search Git Files" })
-
-vim.keymap.set("v", "<F5>", function()
-  -- 1. Copy selection to the 'y' register
-  vim.cmd('noau normal! "yy')
-  -- 2. Get the text from the register
-  local text = vim.fn.getreg("y")
-  -- 3. Open Snacks git_files picker pre-filtered with that text
-  Snacks.picker.git_files({ pattern = text })
-end, { desc = "Find Git files by selection" })
+map({ "n", "i", "v", "x", "s", "t" }, "<F5>", jumplist("<C-o>"), { desc = "Jump back" })
+map({ "n", "i", "v", "x", "s", "t" }, "<F6>", jumplist("<C-i>"), { desc = "Jump forward" })
 
 -- Path-copy helpers -----------------------------------------------------------
 
