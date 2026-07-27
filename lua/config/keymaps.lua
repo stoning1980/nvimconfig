@@ -14,6 +14,7 @@
 -- │ F6      : all modes → jump forward (jumplist <C-i>)                  │
 -- │ F7      : n → grep open buffers  |  v → grep selection in buffers    │
 -- │ F8      : v → send selection | n → send buffered files (claudeide)   │
+-- │ S-F8    : n → start Claude IDE server (auto_start off)               │
 -- │ F9      : n → send file / v → send selection to AI agent (codechat)  │
 -- │ F10     : n → mark word / v → mark selection (interestingwords)      │
 -- │ S-F10   : n → clear all interestingwords marks                       │

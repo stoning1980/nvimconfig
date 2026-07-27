@@ -57,9 +57,13 @@ return {
     { "<leader>as", ":<C-u>ClaudeIdeSend<cr>", mode = "v", desc = "Send selection to Claude" },
     { "<F8>", ":<C-u>ClaudeIdeSend<cr>", mode = "v", desc = "Send selection to Claude" },
     { "<F8>", send_buffers_to_claude, mode = "n", desc = "Send buffered files to Claude" },
+    -- Shift+F8: manually start the server (auto_start is off). Terminals emit
+    -- shifted F8 as <F20>, so map both spellings.
+    { "<S-F8>", "<cmd>ClaudeIde<cr>", mode = "n", desc = "Start Claude IDE server" },
+    { "<F20>", "<cmd>ClaudeIde<cr>", mode = "n", desc = "Start Claude IDE server" },
     { "<leader>aB", send_buffers_to_claude, desc = "Send buffered files to Claude" },
     { "<leader>aa", "<cmd>ClaudeIdeDiffAccept<cr>", desc = "Accept diff" },
     { "<leader>ad", "<cmd>ClaudeIdeDiffDeny<cr>", desc = "Deny diff" },
   },
-  opts = {},
+  opts = { auto_start = false },
 }
