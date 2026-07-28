@@ -1,5 +1,6 @@
 -- Diffview review commands:
---   :Pdf          compare HEAD with a previous commit (Tab: last 20 ancestors)
+--   :Pdf          show one commit's own changes (Tab: last 20 commits incl. HEAD)
+--   :CompareHead  compare HEAD with a previous commit (Tab: last 20 ancestors)
 --   :CodeReview   compare HEAD with a local or remote branch (Tab: ordered branches)
 --   :CompareFiles diff two repo files picked from a fuzzy list (Tab to select two)
 --   :CompareVersionFile pick a version (Tab to complete), then a file, to diff
@@ -112,12 +113,13 @@ local function open(rev)
   vim.cmd("DiffviewOpen " .. rev)
 end
 
--- Completion for `:Pdf` — the last 20 ancestor commits of HEAD (HEAD itself
--- excluded), newest first. Each item is prefixed with a zero-padded index like
--- "(01)" so blink.cmp's cmdline completion keeps them in git-log order (it
--- sorts candidates alphabetically, and "(01)" < "(02)" < ... < "(20)").
-function M.complete_commits()
-  local out = git_lines({ "git", "log", "--skip=1", "--max-count=20", "--format=%h %s", "HEAD" })
+-- The last 20 commits reachable from HEAD, newest first, each prefixed with a
+-- zero-padded index like "(01)" so blink.cmp's cmdline completion keeps them in
+-- git-log order (it sorts candidates alphabetically, and "(01)" < "(02)" <
+-- ... < "(20)"). `skip` drops that many commits from the top, so skip = 1 hides
+-- HEAD itself and the list starts at HEAD~1.
+local function commit_items(skip)
+  local out = git_lines({ "git", "log", "--skip=" .. skip, "--max-count=20", "--format=%h %s", "HEAD" })
   if not out then
     return {}
   end
@@ -128,23 +130,47 @@ function M.complete_commits()
   return items
 end
 
+-- Resolve a commit argument to a revision. The argument is a "(NN) <sha>
+-- <subject>" completion item (see commit_items) or a raw revision. When only
+-- the "(NN)" prefix survived, fall back to HEAD~N — `skip` must match the value
+-- the list was built with, since index 1 is HEAD~skip.
+local function parse_commit(arg, skip)
+  local rev = arg:match("^%(%d+%)%s+(%x%x%x%x+)")
+  if rev then
+    return rev
+  end
+  local n = arg:match("^%(%s*(%d+)%s*%)")
+  if n then
+    return "HEAD~" .. (tonumber(n) - 1 + skip)
+  end
+  return arg:match("^%S+")
+end
+
+-- Completion for `:Pdf` — the last 20 commits, HEAD included.
+function M.complete_commits()
+  return commit_items(0)
+end
+
+-- Show a single commit's own changes, i.e. its parent diffed against it.
+--
+-- With no argument, uses HEAD (HEAD~1..HEAD).
+function M.diff_commit(arg)
+  local rev = (arg and arg ~= "" and parse_commit(arg, 0)) or "HEAD"
+  open(rev .. "~1.." .. rev)
+end
+
+-- Completion for `:CompareHead` — the last 20 ancestor commits of HEAD (HEAD
+-- itself excluded), so every entry is something HEAD can be compared against.
+function M.complete_ancestor_commits()
+  return commit_items(1)
+end
+
 -- Compare HEAD with a previous commit.
 --
 -- With no argument, diffs HEAD against its immediate parent (HEAD~1..HEAD).
--- Otherwise the argument is a "(NN) <sha> <subject>" completion item (see
--- complete_commits) or a raw revision, and HEAD is diffed against that commit.
-function M.diff_previous_commit(arg)
-  local rev
-  if arg and arg ~= "" then
-    -- Prefer the sha from a "(NN) <sha> <subject>" item; fall back to the index
-    -- (HEAD~N) if only "(NN)" survived, then to a raw revision token.
-    rev = arg:match("^%(%d+%)%s+(%x%x%x%x+)")
-    if not rev then
-      local n = arg:match("^%(%s*(%d+)%s*%)")
-      rev = n and ("HEAD~" .. tonumber(n)) or arg:match("^%S+")
-    end
-  end
-  open((rev or "HEAD~1") .. "..HEAD")
+function M.diff_against_head(arg)
+  local rev = (arg and arg ~= "" and parse_commit(arg, 1)) or "HEAD~1"
+  open(rev .. "..HEAD")
 end
 
 -- Completion for `:CodeReview` — the ordered branch list (see get_branches).
@@ -301,11 +327,21 @@ end
 
 function M.setup()
   vim.api.nvim_create_user_command("Pdf", function(opts)
-    M.diff_previous_commit(opts.args)
+    M.diff_commit(opts.args)
   end, {
     nargs = "*",
     complete = function()
       return M.complete_commits()
+    end,
+    desc = "Diffview: show a commit's own changes (parent vs commit)",
+  })
+
+  vim.api.nvim_create_user_command("CompareHead", function(opts)
+    M.diff_against_head(opts.args)
+  end, {
+    nargs = "*",
+    complete = function()
+      return M.complete_ancestor_commits()
     end,
     desc = "Diffview: compare HEAD with a previous commit",
   })

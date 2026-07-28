@@ -73,8 +73,9 @@ map("n", "<F2>", "<cmd>DiffviewToggleFiles<cr>", { desc = "Toggle Diffview File 
 map("n", "<S-F2>", cycle_diffview_layout, { desc = "Toggle Diffview Layout (H/V)" })
 map("n", "<F14>", cycle_diffview_layout, { desc = "Toggle Diffview Layout (H/V)" })
 
--- Register the `:Pdf` (HEAD vs previous commit) and `:CodeReview`
--- (HEAD vs local/remote branch, with branch-name completion) commands.
+-- Register the `:Pdf` (a commit's own changes), `:CompareHead` (HEAD vs a
+-- previous commit) and `:CodeReview` (HEAD vs local/remote branch, with
+-- branch-name completion) commands.
 require("config.git_diff").setup()
 
 -- Register the `:Goto` project switcher (recents + autojump.txt list).
