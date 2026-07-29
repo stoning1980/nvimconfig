@@ -6,7 +6,7 @@
 -- │ F1      : n → toggle Diffview (git index diff)                       │
 -- │ F2      : n → toggle Diffview file panel                             │
 -- │ S-F1    : n → toggle git annotate panel (per-line author/date)       │
--- │ S-F2    : n → toggle Diffview layout (side-by-side ↔ stacked)        │
+-- │ S-F2    : n → open current diff's two sides in Beyond Compare        │
 -- │ F3      : n → next diff hunk (Diffview only; error else)             │
 -- │ S-F3    : n → next file entry (Diffview only)                        │
 -- │ F4      : n → resume last Snacks picker search                       │
@@ -23,6 +23,7 @@
 -- │ F12     : v → selection | n → word under cursor / clipboard (adb)    │
 -- │ S-F12   : n → AdbHelper action menu (A/B debug/relaunch/kill/clear)  │
 -- │ Note: terminals emit S-Fn as F(n+12): S-F1=F13 S-F12=F24 …           │
+-- │ Commands without a key: :DiffviewCycleLayout (side-by-side ↔ stacked)│
 -- └─────────────────────────────────────────────────────────────────────┘
 
 local map = vim.keymap.set
@@ -54,6 +55,8 @@ end
 
 -- Toggle the current Diffview's layout between side-by-side (left/right) and
 -- stacked (top/bottom) — handy for long-line diffs. No-op when no Diffview open.
+-- Reachable as `:DiffviewCycleLayout`; it has no key binding because <S-F2> now
+-- opens Beyond Compare instead.
 local function cycle_diffview_layout()
   if not diffview_view() then
     vim.notify("No Diffview open", vim.log.levels.INFO, { title = "Diffview" })
@@ -62,16 +65,16 @@ local function cycle_diffview_layout()
   require("diffview.actions").cycle_layout()
 end
 
+vim.api.nvim_create_user_command("DiffviewCycleLayout", cycle_diffview_layout, {
+  nargs = 0,
+  desc = "Toggle Diffview layout (side-by-side ↔ stacked)",
+})
+
 -- F1: Toggle Diffview.
 map("n", "<F1>", toggle_diffview, { desc = "Toggle Diffview" })
 
 -- F2: Toggle the Diffview file panel (maximizes space for the code diff).
 map("n", "<F2>", "<cmd>DiffviewToggleFiles<cr>", { desc = "Toggle Diffview File Panel" })
-
--- Shift+F2: Toggle Diffview layout (H/V). Terminals emit shifted F2 as <F14>,
--- so map both spellings.
-map("n", "<S-F2>", cycle_diffview_layout, { desc = "Toggle Diffview Layout (H/V)" })
-map("n", "<F14>", cycle_diffview_layout, { desc = "Toggle Diffview Layout (H/V)" })
 
 -- Register the `:Pdf` (a commit's own changes), `:CompareHead` (HEAD vs a
 -- previous commit) and `:CodeReview` (HEAD vs local/remote branch, with
@@ -80,6 +83,18 @@ require("config.git_diff").setup()
 
 -- Register the `:Goto` project switcher (recents + autojump.txt list).
 require("config.goto").setup()
+
+-- Register `:BeyondCompare` and bind it to Shift+F2: hand the two sides of the
+-- current diff (Diffview entry, or any plain diff split) to Beyond Compare,
+-- whose side-by-side rendering is much easier to read for large files.
+-- Terminals emit shifted F2 as <F14>, so map both spellings.
+require("config.beyond_compare").setup()
+
+local function open_beyond_compare()
+  require("config.beyond_compare").open()
+end
+map("n", "<S-F2>", open_beyond_compare, { desc = "Open diff in Beyond Compare" })
+map("n", "<F14>", open_beyond_compare, { desc = "Open diff in Beyond Compare" })
 
 -- F3 / Shift+F3: Jump to next / previous diff hunk — only inside a Diffview.
 -- The ]c / [c motions only work in a diff-mode window, so if focus is on the
@@ -201,8 +216,8 @@ vim.keymap.set("n", "<F22>", clear_marks, { desc = "Clear all marks" })
 
 -- Shift+F1: toggle an Android Studio / JetBrains style "Annotate" panel — a
 -- scroll-bound left split showing author + date for every line. Press q inside
--- the panel (or Shift+F1 again) to close it. Terminals emit shifted F1 as
--- <F13>, so map both spellings.
+-- the panel (or Shift+F1 again) to close it. Terminals emit shifted F1 as <F13>,
+-- so map both spellings.
 local function toggle_git_annotate()
   require("config.git_annotate").toggle()
 end
