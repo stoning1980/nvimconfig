@@ -6,6 +6,7 @@ local config = require("codechat.config")
 local util = require("codechat.util")
 local terminal = require("codechat.terminal")
 local ui = require("codechat.ui")
+local history = require("codechat.history")
 
 local M = {}
 
@@ -136,7 +137,9 @@ local function send_context(name, selection)
   end
   local origin = vim.api.nvim_get_current_win()
   local function deliver(comment)
-    terminal.send(name, cfg, build_payload(cfg, selection, comment), false)
+    local payload = build_payload(cfg, selection, comment)
+    history.append(name, payload)
+    terminal.send(name, cfg, payload, false)
     -- Return to the code window in normal mode; let the agent work on the side.
     vim.schedule(function()
       if vim.api.nvim_win_is_valid(origin) then
@@ -156,6 +159,7 @@ local function send_context(name, selection)
         start_line = selection.start_line,
         end_line = selection.end_line,
       }),
+      history = history.recent(10),
       on_submit = deliver,
       on_send = function(comment)
         local send_cfg = vim.tbl_extend("force", cfg, { auto_submit = false, newline_before = true })
@@ -165,6 +169,7 @@ local function send_context(name, selection)
           end_line = selection.end_line,
         })
         local text = (comment ~= "") and (ref .. "\n" .. comment) or ref
+        history.append(name, text)
         terminal.send(name, send_cfg, text, false)
         vim.schedule(function()
           if vim.api.nvim_win_is_valid(origin) then

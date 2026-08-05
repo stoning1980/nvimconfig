@@ -27,10 +27,12 @@ M.defaults = {
   -- (a cold start loads the binary, checks auth, and renders before the input
   -- box accepts input).
   startup_delay = 1500,
-  -- Comment input window (Snacks float).
+  -- Comment input window (Snacks float). `history_height` sizes the read-only
+  -- panel shown beneath it listing recently sent messages.
   input = {
     width = 0.6,
     height = 0.3,
+    history_height = 0.25,
   },
   -- How a message is rendered before being sent. Receives a table:
   --   { relpath, start_line, end_line, ext, code, comment, include_code }
