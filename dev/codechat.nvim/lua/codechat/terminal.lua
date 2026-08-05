@@ -152,6 +152,14 @@ function M.open(name, cfg, focus)
     auto_close = false,
     win = vim.tbl_extend("force", { position = "right", enter = want_focus }, cfg.win or {}),
   })
+  -- Keep the full agent transcript scrollable. Terminal buffers default to
+  -- 10000 lines of scrollback and drop the oldest beyond that; raise it to the
+  -- maximum (100000) so long sessions stay reviewable. Scoped to this buffer so
+  -- other terminals are unaffected. (No effect while a TUI paints on the
+  -- alternate screen, but harmless there.)
+  if state.win and state.win.buf and vim.api.nvim_buf_is_valid(state.win.buf) then
+    vim.bo[state.win.buf].scrollback = cfg.scrollback or 100000
+  end
   state.launched_at = uv.now()
   return true
 end

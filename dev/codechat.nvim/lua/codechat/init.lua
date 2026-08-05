@@ -19,6 +19,7 @@ local SHARED_KEYS = {
   "prompt_for_comment",
   "include_code",
   "startup_delay",
+  "scrollback",
   "input",
   "format",
   "log_level",

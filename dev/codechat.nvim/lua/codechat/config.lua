@@ -27,6 +27,9 @@ M.defaults = {
   -- (a cold start loads the binary, checks auth, and renders before the input
   -- box accepts input).
   startup_delay = 1500,
+  -- Terminal scrollback lines kept per agent buffer (Neovim default is 10000,
+  -- max 100000). Higher keeps more of the transcript scrollable.
+  scrollback = 100000,
   -- Comment input window (Snacks float). `history_height` sizes the read-only
   -- panel shown beneath it listing recently sent messages.
   input = {
