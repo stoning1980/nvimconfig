@@ -87,6 +87,80 @@ vim.api.nvim_create_autocmd("FileChangedShellPost", {
   end,
 })
 
+-- Autosave, modeled on VSCode's `afterDelay` + `onFocusChange` and IntelliJ's
+-- save-on-frame-deactivation. Two triggers:
+--   1. Debounced while typing -- a timer restarts on every change and only
+--      writes ~1000ms after you stop, so we never save on each keystroke.
+--   2. Immediate flush when a buffer or the editor loses focus.
+-- All writes are guarded to touch only real, modifiable, named file buffers
+-- with unsaved changes, and use `noautocmd` to avoid churning other autocmds.
+local autosave = vim.api.nvim_create_augroup("user_autosave", { clear = true })
+local autosave_delay = 1000
+local autosave_timer = assert(vim.uv.new_timer())
+
+local function autosave_eligible(buf)
+  if not vim.api.nvim_buf_is_valid(buf) then
+    return false
+  end
+  if not vim.bo[buf].modifiable or vim.bo[buf].readonly then
+    return false
+  end
+  -- Only ordinary file buffers (skip terminals, help, quickfix, prompts...).
+  if vim.bo[buf].buftype ~= "" then
+    return false
+  end
+  if not vim.bo[buf].modified then
+    return false
+  end
+  if vim.api.nvim_buf_get_name(buf) == "" then
+    return false
+  end
+  return true
+end
+
+local function autosave_write(buf)
+  if not autosave_eligible(buf) then
+    return
+  end
+  -- `keepjumps`/`noautocmd` keep the write side-effect-free; `silent` avoids
+  -- the "written" message on every debounce tick.
+  vim.api.nvim_buf_call(buf, function()
+    vim.cmd("silent noautocmd keepjumps write")
+  end)
+end
+
+local function autosave_schedule(buf)
+  autosave_timer:stop()
+  autosave_timer:start(
+    autosave_delay,
+    0,
+    vim.schedule_wrap(function()
+      autosave_write(buf)
+    end)
+  )
+end
+
+-- Debounced trigger while editing (VSCode `afterDelay`).
+vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "InsertLeave" }, {
+  group = autosave,
+  callback = function(args)
+    if autosave_eligible(args.buf) then
+      autosave_schedule(args.buf)
+    end
+  end,
+})
+
+-- Immediate flush on focus/buffer leave (VSCode `onFocusChange`, IntelliJ
+-- frame deactivation). Cancel any pending debounce first so we don't
+-- double-write.
+vim.api.nvim_create_autocmd({ "BufLeave", "FocusLost" }, {
+  group = autosave,
+  callback = function(args)
+    autosave_timer:stop()
+    autosave_write(args.buf)
+  end,
+})
+
 -- :FileAbsolutePath -- copy the current file's absolute path to the system
 -- clipboard (the `+` register).
 vim.api.nvim_create_user_command("FileAbsolutePath", function()
