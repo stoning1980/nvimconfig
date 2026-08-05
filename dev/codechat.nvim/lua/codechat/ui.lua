@@ -56,6 +56,90 @@ function M.input(cfg, opts)
     focus_input()
   end
 
+  --- Insert `text` into the input buffer at the cursor and leave the cursor
+  --- just after it (used to drop an @path mention where the user was typing).
+  local function insert_at_cursor(text)
+    if not (win.win and vim.api.nvim_win_is_valid(win.win)) then
+      return
+    end
+    local cursor = vim.api.nvim_win_get_cursor(win.win)
+    local row, col = cursor[1], cursor[2]
+    vim.api.nvim_buf_set_text(win.buf, row - 1, col, row - 1, col, { text })
+    pcall(vim.api.nvim_win_set_cursor, win.win, { row, col + #text })
+  end
+
+  --- Open a file picker and insert the chosen file as an `@relpath` mention.
+  --- Triggered by `@` in insert mode; agents resolve `@relpath` to the file.
+  local function pick_file()
+    local pok, snacks = pcall(require, "snacks")
+    if not (pok and snacks.picker and type(snacks.picker.files) == "function") then
+      util.warn("snacks.picker is required for @ file completion")
+      return
+    end
+    vim.cmd("stopinsert")
+    snacks.picker.files({
+      confirm = function(picker, item)
+        picker:close()
+        if item then
+          local full = snacks.picker.util.path(item) or item.file or ""
+          if full ~= "" then
+            insert_at_cursor("@" .. util.relpath(full))
+          end
+        end
+        focus_input()
+      end,
+      -- If the picker is dismissed, return focus to the input box.
+      on_close = function()
+        focus_input()
+      end,
+    })
+  end
+
+  --- Open the Goto project picker and insert the chosen directory's path.
+  --- Triggered by `#` in insert mode; reuses the same project list as `:Goto`.
+  local function pick_project()
+    local gok, goto_mod = pcall(require, "config.goto")
+    local pok, snacks = pcall(require, "snacks")
+    if not (gok and type(goto_mod.candidates) == "function") then
+      util.warn("config.goto is required for # project completion")
+      return
+    end
+    if not (pok and snacks.picker and type(snacks.picker.pick) == "function") then
+      util.warn("snacks.picker is required for # project completion")
+      return
+    end
+    local dirs = goto_mod.candidates()
+    if #dirs == 0 then
+      util.warn("no projects to pick from")
+      focus_input()
+      return
+    end
+    local items = {}
+    for i, entry in ipairs(dirs) do
+      local marker = entry.recent and "󰋚 " or "   "
+      items[#items + 1] = { text = marker .. vim.fn.fnamemodify(entry.dir, ":~"), dir = entry.dir, idx = i }
+    end
+    vim.cmd("stopinsert")
+    snacks.picker.pick({
+      source = "codechat_goto",
+      items = items,
+      format = "text",
+      title = "Goto Project",
+      preview = "none",
+      layout = { preset = "select", preview = false },
+      confirm = function(picker, item)
+        picker:close()
+        if item and item.dir then
+          insert_at_cursor(item.dir)
+        end
+        focus_input()
+      end,
+      on_close = function()
+        focus_input()
+      end,
+    })
+  end
+
   local function close()
     if history_win then
       pcall(function()
@@ -106,7 +190,7 @@ function M.input(cfg, opts)
     border = "rounded",
     title = " " .. (opts.title or "Message") .. " ",
     title_pos = "center",
-    footer = " Enter = submit   ^S = send   ^R = history   ⌥+Enter = new line   Esc = cancel ",
+    footer = " Enter = submit   ^S = send   ^R = history   @ = file   # = project   ⌥+Enter = new line   Esc = cancel ",
     footer_pos = "center",
     enter = true,
     bo = { filetype = "markdown", modifiable = true, buftype = "nofile" },
@@ -118,6 +202,8 @@ function M.input(cfg, opts)
   vim.keymap.set("i", "<M-CR>", "<CR>", { buffer = win.buf, nowait = true, remap = false })
   vim.keymap.set("i", "<C-s>", send, { buffer = win.buf, nowait = true })
   vim.keymap.set("n", "<C-s>", send, { buffer = win.buf, nowait = true })
+  vim.keymap.set("i", "#", pick_project, { buffer = win.buf, nowait = true })
+  vim.keymap.set("i", "@", pick_file, { buffer = win.buf, nowait = true })
   vim.keymap.set("n", "<Esc>", cancel, { buffer = win.buf, nowait = true })
   vim.keymap.set("n", "q", cancel, { buffer = win.buf, nowait = true })
 
