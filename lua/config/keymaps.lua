@@ -24,6 +24,7 @@
 -- │ S-F12   : n → AdbHelper action menu (A/B debug/relaunch/kill/clear)  │
 -- │ Note: terminals emit S-Fn as F(n+12): S-F1=F13 S-F12=F24 …           │
 -- │ Commands without a key: :DiffviewCycleLayout (side-by-side ↔ stacked)│
+-- │                         :GitGrep (grep git-tracked files only)       │
 -- └─────────────────────────────────────────────────────────────────────┘
 
 local map = vim.keymap.set
@@ -83,6 +84,10 @@ require("config.git_diff").setup()
 
 -- Register the `:Goto` project switcher (recents + autojump.txt list).
 require("config.goto").setup()
+
+-- Register `:GitGrep` — live grep over git-tracked files via `git grep`, which
+-- is dramatically faster than rg in very large repos (see lua/config/git_grep.lua).
+require("config.git_grep").setup()
 
 -- Register `:BeyondCompare` and bind it to Shift+F2: hand the two sides of the
 -- current diff (Diffview entry, or any plain diff split) to Beyond Compare,
