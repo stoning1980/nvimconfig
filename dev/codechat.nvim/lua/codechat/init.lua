@@ -354,24 +354,16 @@ local function create_commands()
   cmd("CodeChatPick", function()
     M.pick_agent(function() end)
   end, { desc = "Choose which AI agent <F9> sends to" })
-
-  -- Per-agent commands (target a specific agent regardless of the choice).
-  for name, agent in pairs(config.options.agents) do
-    local prefix = agent.command_prefix or (name:sub(1, 1):upper() .. name:sub(2) .. "Chat")
-    local label = agent.label or name
-    cmd(prefix, function()
-      M.toggle(name)
-    end, { desc = "Toggle the " .. label .. " terminal" })
-    cmd(prefix .. "Send", function()
-      M.send_selection(name)
-    end, { range = true, desc = "Send selection to " .. label })
-    cmd(prefix .. "SendFile", function()
-      M.send_file(name)
-    end, { desc = "Send the current file to " .. label })
-    cmd(prefix .. "Stop", function()
+  cmd("CodeChatStop", function()
+    local alive = alive_agents()
+    if #alive == 0 then
+      util.info("no agent terminal running")
+      return
+    end
+    for _, name in ipairs(alive) do
       M.stop(name)
-    end, { desc = "Stop the " .. label .. " terminal" })
-  end
+    end
+  end, { desc = "Stop any running AI agent terminals" })
 end
 
 ---@param opts table|nil

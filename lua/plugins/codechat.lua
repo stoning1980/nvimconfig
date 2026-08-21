@@ -16,26 +16,7 @@ return {
     "CodeChatSend",
     "CodeChatSendFile",
     "CodeChatPick",
-    "TtadkClaudeChat",
-    "TtadkClaudeChatSend",
-    "TtadkClaudeChatSendFile",
-    "TtadkClaudeChatStop",
-    "TtadkCursorChat",
-    "TtadkCursorChatSend",
-    "TtadkCursorChatSendFile",
-    "TtadkCursorChatStop",
-    "ClaudeChat",
-    "ClaudeChatSend",
-    "ClaudeChatSendFile",
-    "ClaudeChatStop",
-    "CursorChat",
-    "CursorChatSend",
-    "CursorChatSendFile",
-    "CursorChatStop",
-    "RelayChat",
-    "RelayChatSend",
-    "RelayChatSendFile",
-    "RelayChatStop",
+    "CodeChatStop",
   },
   keys = {
     -- The one shortcut: send to the remembered agent (picker on first use).
@@ -62,8 +43,6 @@ return {
     --   5. Relay         -- the plain `relay` binary (launched directly in bash)
     -- ── Agent parameter reference ─────────────────────────────────────
     -- label          : display name shown in the :CodeChatPick picker.
-    -- command_prefix : Vim command namespace; generates four commands:
-    --                  <prefix>, <prefix>Send, <prefix>SendFile, <prefix>Stop.
     -- command        : how to launch the agent. Accepts three forms:
     --                  * "binary"              – plain executable (no spaces)
     --                  * "cmd --flag -x val"   – shell command line (has spaces)
@@ -85,7 +64,6 @@ return {
     agents = {
       ttadk_claude = {
         label = "ttadk Claude",
-        command_prefix = "TtadkClaudeChat",
         order = 1,
         login = true,
         setup = { "nvm use 22" }, -- runs before `command`
@@ -94,7 +72,6 @@ return {
       },
       ttadk_cursor = {
         label = "ttadk Cursor",
-        command_prefix = "TtadkCursorChat",
         order = 2,
         login = true,
         setup = { "nvm use 22" },
@@ -102,7 +79,6 @@ return {
       },
       claude = {
         label = "Claude",
-        command_prefix = "ClaudeChat",
         order = 3,
         login = true,
         setup = { "nvm use 22" },
@@ -111,14 +87,12 @@ return {
       },
       cursor = {
         label = "Cursor",
-        command_prefix = "CursorChat",
         order = 4,
         command = vim.fn.expand("~/.local/bin/cursor-agent"),
         fallbacks = { "cursor-agent", "agent" },
       },
       relay = {
         label = "Relay",
-        command_prefix = "RelayChat",
         order = 5,
         command = "relay",
       },

@@ -160,38 +160,3 @@ vim.api.nvim_create_autocmd({ "BufLeave", "FocusLost" }, {
     autosave_write(args.buf)
   end,
 })
-
--- :FileAbsolutePath -- copy the current file's absolute path to the system
--- clipboard (the `+` register).
-vim.api.nvim_create_user_command("FileAbsolutePath", function()
-  local path = vim.api.nvim_buf_get_name(0)
-  if path == "" then
-    vim.notify("No file associated with the current buffer", vim.log.levels.WARN, { title = "FileAbsolutePath" })
-    return
-  end
-  path = vim.fn.fnamemodify(path, ":p")
-  vim.fn.setreg("+", path)
-  vim.notify("Copied to clipboard:\n" .. path, vim.log.levels.INFO, { title = "FileAbsolutePath" })
-end, { desc = "Copy the current file's absolute path to the system clipboard" })
-
--- :FileRepoPath -- copy the current file's path relative to the project root
--- (the git repo root, or the nearest .git/package.json/etc.) to the system
--- clipboard. Falls back to the absolute path when no root can be found.
-vim.api.nvim_create_user_command("FileRepoPath", function()
-  local abs = vim.api.nvim_buf_get_name(0)
-  if abs == "" then
-    vim.notify("No file associated with the current buffer", vim.log.levels.WARN, { title = "FileRepoPath" })
-    return
-  end
-  abs = vim.fn.fnamemodify(abs, ":p")
-  local root = vim.fs.root(abs, { ".git", ".hg", ".svn" }) or vim.fn.getcwd()
-  local rel = abs
-  if root and root ~= "" then
-    root = vim.fn.fnamemodify(root, ":p"):gsub("/$", "")
-    if abs:sub(1, #root + 1) == root .. "/" then
-      rel = abs:sub(#root + 2)
-    end
-  end
-  vim.fn.setreg("+", rel)
-  vim.notify("Copied to clipboard:\n" .. rel, vim.log.levels.INFO, { title = "FileRepoPath" })
-end, { desc = "Copy the current file's path relative to the repo/project root to the system clipboard" })
