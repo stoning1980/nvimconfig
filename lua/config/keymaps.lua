@@ -78,8 +78,9 @@ map("n", "<F1>", toggle_diffview, { desc = "Toggle Diffview" })
 map("n", "<F2>", "<cmd>DiffviewToggleFiles<cr>", { desc = "Toggle Diffview File Panel" })
 
 -- Register the `:Pdf` (a commit's own changes), `:CompareHead` (HEAD vs a
--- previous commit) and `:CodeReview` (HEAD vs local/remote branch, with
--- branch-name completion) commands.
+-- previous commit), `:CodeReview` (HEAD vs local/remote branch, with
+-- branch-name completion) and `:EditDiff` (open the files that differ from a
+-- base branch as buffers, same branch completion) commands.
 require("config.git_diff").setup()
 
 -- Register the `:Goto` project switcher (recents + autojump.txt list).

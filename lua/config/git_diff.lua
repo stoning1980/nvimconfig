@@ -2,6 +2,8 @@
 --   :Pdf          show one commit's own changes (Tab: last 20 commits incl. HEAD)
 --   :CompareHead  compare HEAD with a previous commit (Tab: last 20 ancestors)
 --   :CodeReview   compare HEAD with a local or remote branch (Tab: ordered branches)
+--   :EditDiff     open every file differing from a base branch as a buffer
+--                 (same branch list as :CodeReview; confirms past 20 files)
 --   :CompareFiles diff two repo files picked from a fuzzy list (Tab to select two)
 --   :CompareVersionFile pick a version (Tab to complete), then a file, to diff
 --                 HEAD's copy of that file against the chosen version's copy
@@ -213,6 +215,58 @@ local function repo_root()
   return out and out[1] or nil
 end
 
+-- Above this many files, ask before opening them all — picking the wrong base
+-- branch easily matches hundreds of unrelated files.
+local EDIT_DIFF_CONFIRM_AT = 20
+
+-- Open every file that differs from a base branch as an editable buffer (as
+-- opposed to :CodeReview, which opens the same set in a read-only Diffview).
+--
+-- The argument is a "(NN) <branch>" completion item (see complete_branches) or a
+-- raw branch name, and the file set comes from the same three-dot range
+-- :CodeReview diffs: files changed on HEAD's side since the merge-base.
+-- `--diff-filter=d` drops files deleted on HEAD, which would only open empty
+-- buffers. Files are added with :badd (cheap, no LSP/Treesitter attach) and only
+-- the first is actually opened.
+function M.edit_diff(branch)
+  if not branch or branch == "" then
+    notify("Provide a base branch (Tab to complete)", vim.log.levels.WARN)
+    return
+  end
+
+  -- Strip the "(NN) " prefix from a completion item, if present.
+  local name = branch:match("^%(%d+%)%s+(.+)$") or branch:match("^%S+")
+
+  local root = repo_root()
+  if not root then
+    notify("Not a git repo", vim.log.levels.ERROR)
+    return
+  end
+
+  local files = git_lines({ "git", "diff", "--name-only", "--diff-filter=d", name .. "...HEAD" })
+  if not files then
+    notify("Failed to diff against " .. name .. " (unknown branch?)", vim.log.levels.ERROR)
+    return
+  end
+  if #files == 0 then
+    notify("No files differ from " .. name)
+    return
+  end
+
+  if #files > EDIT_DIFF_CONFIRM_AT then
+    local prompt = string.format("%d files differ from %s. Open all of them?", #files, name)
+    if vim.fn.confirm(prompt, "&Yes\n&No", 2) ~= 1 then
+      return
+    end
+  end
+
+  for _, rel in ipairs(files) do
+    vim.cmd("badd " .. vim.fn.fnameescape(root .. "/" .. rel))
+  end
+  vim.cmd("edit " .. vim.fn.fnameescape(root .. "/" .. files[1]))
+  notify(string.format("Opened %d file(s) differing from %s", #files, name))
+end
+
 -- Absolute path of a Snacks picker item (git_files gives item.file relative to
 -- item.cwd). Prefer the picker's own resolver when present.
 local function item_path(item)
@@ -354,6 +408,16 @@ function M.setup()
       return M.complete_branches()
     end,
     desc = "Diffview: compare HEAD with a local/remote branch",
+  })
+
+  vim.api.nvim_create_user_command("EditDiff", function(opts)
+    M.edit_diff(opts.args)
+  end, {
+    nargs = "*",
+    complete = function()
+      return M.complete_branches()
+    end,
+    desc = "Open all files differing from a base branch as buffers",
   })
 
   vim.api.nvim_create_user_command("CompareFiles", function()
