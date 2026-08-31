@@ -8,6 +8,8 @@ return {
   cmd = { "AdbSendText", "AdbSendClipboard", "AdbMenu" },
   -- F12: send to Android device (visual → selection, normal → word under cursor,
   -- falling back to the system clipboard when there is no word under the cursor).
+  -- After sending, the cursor advances to the next word so repeated presses walk
+  -- through the buffer.
   -- Shift+F12 opens the action menu; terminals emit shifted F12 as <F24>, so
   -- map both spellings.
   keys = {

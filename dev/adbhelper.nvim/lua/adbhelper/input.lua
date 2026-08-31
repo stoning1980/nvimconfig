@@ -105,15 +105,17 @@ local function make_progress(total)
   return update, finish
 end
 
---- Run a list of commands sequentially (each waits for the prior).
+--- Run a list of commands sequentially (each waits for the prior). A failing
+--- command does not abort the run, but is reported through `ok` at the end.
 ---@param cmds string[][] list of argv tables
 ---@param idx number current index
 ---@param on_step fun(done: number) progress callback (commands completed)
----@param on_done fun()
-local function run_sequential(cmds, idx, on_step, on_done)
+---@param on_done fun(ok: boolean)
+---@param ok boolean whether every command so far succeeded
+local function run_sequential(cmds, idx, on_step, on_done, ok)
   if idx > #cmds then
     if on_done then
-      on_done()
+      on_done(ok)
     end
     return
   end
@@ -121,9 +123,10 @@ local function run_sequential(cmds, idx, on_step, on_done)
     vim.schedule(function()
       if result.code ~= 0 then
         vim.notify("adb command failed: " .. (result.stderr or "unknown"), vim.log.levels.WARN, { title = "AdbHelper" })
+        ok = false
       end
       on_step(idx)
-      run_sequential(cmds, idx + 1, on_step, on_done)
+      run_sequential(cmds, idx + 1, on_step, on_done, ok)
     end)
   end)
 end
@@ -131,7 +134,7 @@ end
 --- Send text to a device, handling special characters.
 ---@param serial string device serial
 ---@param text string text to send
----@param on_done? fun() called when all commands finish
+---@param on_done? fun(ok: boolean) called when all commands finish
 function M.send_text(serial, text, on_done)
   if text == "" then
     vim.notify("No text to send", vim.log.levels.WARN, { title = "AdbHelper" })
@@ -146,12 +149,12 @@ function M.send_text(serial, text, on_done)
 
   local update, finish = make_progress(total)
   update(0)
-  run_sequential(cmds, 1, update, function()
+  run_sequential(cmds, 1, update, function(ok)
     finish()
     if on_done then
-      on_done()
+      on_done(ok)
     end
-  end)
+  end, true)
 end
 
 return M

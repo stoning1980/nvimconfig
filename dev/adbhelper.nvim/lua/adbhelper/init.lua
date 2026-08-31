@@ -33,21 +33,50 @@ local function get_visual_selection()
   return table.concat(lines, "\n")
 end
 
+--- Move the cursor to the start of the word following `from` ({row, col} with a
+--- 1-indexed row and 0-indexed col), so repeated sends walk through the buffer
+--- word by word. This runs once the send has finished, so it bails out when the
+--- user has moved on to another buffer or is no longer in normal mode.
+---@param buf integer buffer the text was sent from
+---@param from integer[]
+local function advance_to_next_word(buf, from)
+  if vim.api.nvim_get_current_buf() ~= buf or vim.fn.mode() ~= "n" then
+    return
+  end
+  local row = from[1]
+  if row < 1 or row > vim.api.nvim_buf_line_count(buf) then
+    return
+  end
+  local line = vim.api.nvim_buf_get_lines(buf, row - 1, row, false)[1] or ""
+  -- The '> mark uses v:maxcol for linewise selections, so clamp it.
+  local col = math.max(math.min(from[2], #line - 1), 0)
+  vim.api.nvim_win_set_cursor(0, { row, col })
+  vim.cmd("normal! w")
+end
+
 --- Pick a device and send the given text to it.
 ---@param text string
-local function send(text)
+---@param on_sent? fun() called only when every adb command succeeded
+local function send(text, on_sent)
   local device = require("adbhelper.device")
   local input = require("adbhelper.input")
   device.pick_device(function(serial)
-    input.send_text(serial, text, function()
+    input.send_text(serial, text, function(ok)
+      if not ok then
+        return
+      end
       vim.notify("Text sent to " .. serial, vim.log.levels.INFO, { title = "AdbHelper" })
+      if on_sent then
+        on_sent()
+      end
     end)
   end)
 end
 
 --- Send the current visual selection to an Android device. The selection is
 --- also copied to the system clipboard so a subsequent normal-mode send resends
---- the same text.
+--- the same text. Once the send succeeds the cursor moves to the word following
+--- the selection.
 function M.send_selection()
   local text = get_visual_selection()
   if text == "" then
@@ -55,22 +84,36 @@ function M.send_selection()
     return
   end
   vim.fn.setreg("+", text)
-  send(text)
+  local buf = vim.api.nvim_get_current_buf()
+  local selection_end = vim.api.nvim_buf_get_mark(0, ">")
+  send(text, function()
+    advance_to_next_word(buf, selection_end)
+  end)
 end
 
 --- Send text to an Android device from normal mode. Prefers the word under the
 --- cursor; when there is no word under the cursor, falls back to the system
---- clipboard contents.
+--- clipboard contents. A successful send of the word under the cursor advances
+--- the cursor to the next word, so repeated presses walk through the buffer.
 function M.send_clipboard()
   local text = vim.fn.expand("<cword>")
-  if text == nil or text == "" then
+  local from_cursor = text ~= nil and text ~= ""
+  if not from_cursor then
     text = vim.fn.getreg("+")
   end
   if text == nil or text == "" then
     vim.notify("No text to send", vim.log.levels.WARN, { title = "AdbHelper" })
     return
   end
-  send(text)
+  if not from_cursor then
+    send(text)
+    return
+  end
+  local buf = vim.api.nvim_get_current_buf()
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  send(text, function()
+    advance_to_next_word(buf, cursor)
+  end)
 end
 
 --- Show the adb action menu (device/app pickers follow the chosen action).
