@@ -6,10 +6,10 @@ return {
   name = "adbhelper.nvim",
   event = "VeryLazy",
   cmd = { "AdbSendText", "AdbSendClipboard", "AdbMenu" },
-  -- F12: send to Android device (visual → selection, normal → word under cursor,
-  -- falling back to the system clipboard when there is no word under the cursor).
-  -- After sending, the cursor advances to the next word so repeated presses walk
-  -- through the buffer.
+  -- F12: send to Android device (visual → selection, normal → token under cursor,
+  -- falling back to the system clipboard when the rest of the line is blank).
+  -- A token is a word or a run of punctuation, so repeated presses walk through
+  -- the buffer sending everything but the whitespace.
   -- Shift+F12 opens the action menu; terminals emit shifted F12 as <F24>, so
   -- map both spellings.
   keys = {
