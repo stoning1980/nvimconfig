@@ -27,14 +27,6 @@ local function brighten_separators()
   vim.api.nvim_set_hl(0, "SnacksWinSeparator", { link = "WinSeparator" })
 end
 
-vim.api.nvim_create_autocmd("ColorScheme", {
-  group = vim.api.nvim_create_augroup("user_bright_separators", { clear = true }),
-  callback = brighten_separators,
-})
-
--- Colorscheme is already loaded by the time VeryLazy runs; apply once now too.
-brighten_separators()
-
 -- Make diff highlights (Diffview, :diffthis, gitsigns preview) much more
 -- visible: stronger line backgrounds plus a bright "changed word" color so the
 -- exact edits inside a line stand out.
@@ -52,12 +44,54 @@ local function improve_diff_colors()
   vim.api.nvim_set_hl(0, "DiffDeleteText", { bg = "#8a2f3a", fg = "NONE", bold = true })
 end
 
-vim.api.nvim_create_autocmd("ColorScheme", {
-  group = vim.api.nvim_create_augroup("user_diff_colors", { clear = true }),
-  callback = improve_diff_colors,
+-- Make the line under the cursor obvious. tokyonight's CursorLine (#2f334d) is
+-- only a couple shades off the background (#222436), so the line being edited
+-- blends in. Tint the sign and fold columns too, otherwise the highlight starts
+-- after the gutter instead of spanning the full row.
+--
+-- The underline is a fallback: plugins that paint their own line background via
+-- extmarks (render-markdown code blocks, diff views) draw over CursorLine's
+-- background, but the underline attribute still combines through, so the cursor
+-- line stays identifiable inside them.
+local cursorline_bg = "#3d4468"
+
+local function highlight_cursorline()
+  vim.api.nvim_set_hl(0, "CursorLine", { bg = cursorline_bg, underline = true })
+  vim.api.nvim_set_hl(0, "CursorLineNr", { bg = cursorline_bg, fg = "#ffc777", bold = true })
+  vim.api.nvim_set_hl(0, "CursorLineSign", { bg = cursorline_bg })
+  vim.api.nvim_set_hl(0, "CursorLineFold", { bg = cursorline_bg })
+end
+
+-- LazyVim sources this file *before* it applies the colorscheme, and its
+-- default colorscheme is a plain `require("tokyonight").load()` call that fires
+-- no ColorScheme event -- so highlights set at require time are silently
+-- overwritten. Re-apply once LazyVim has finished starting up, and again
+-- whenever the colorscheme is switched by hand.
+local function apply_highlight_overrides()
+  brighten_separators()
+  improve_diff_colors()
+  highlight_cursorline()
+end
+
+local highlights = vim.api.nvim_create_augroup("user_highlight_overrides", { clear = true })
+
+vim.api.nvim_create_autocmd("User", {
+  group = highlights,
+  pattern = "VeryLazy",
+  callback = apply_highlight_overrides,
 })
 
-improve_diff_colors()
+vim.api.nvim_create_autocmd("ColorScheme", {
+  group = highlights,
+  callback = apply_highlight_overrides,
+})
+
+-- Re-sourcing this file by hand happens long after VeryLazy, so apply directly
+-- in that case. At startup this is skipped, since the colorscheme that would
+-- clobber these highlights has not loaded yet.
+if vim.v.vim_did_enter == 1 then
+  apply_highlight_overrides()
+end
 
 -- Auto-reload files changed outside Neovim. `autoread` lets Nvim pick up the
 -- new contents, but only when it actually checks the file -- so trigger a
