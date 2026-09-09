@@ -48,15 +48,10 @@ end
 -- only a couple shades off the background (#222436), so the line being edited
 -- blends in. Tint the sign and fold columns too, otherwise the highlight starts
 -- after the gutter instead of spanning the full row.
---
--- The underline is a fallback: plugins that paint their own line background via
--- extmarks (render-markdown code blocks, diff views) draw over CursorLine's
--- background, but the underline attribute still combines through, so the cursor
--- line stays identifiable inside them.
 local cursorline_bg = "#3d4468"
 
 local function highlight_cursorline()
-  vim.api.nvim_set_hl(0, "CursorLine", { bg = cursorline_bg, underline = true })
+  vim.api.nvim_set_hl(0, "CursorLine", { bg = cursorline_bg })
   vim.api.nvim_set_hl(0, "CursorLineNr", { bg = cursorline_bg, fg = "#ffc777", bold = true })
   vim.api.nvim_set_hl(0, "CursorLineSign", { bg = cursorline_bg })
   vim.api.nvim_set_hl(0, "CursorLineFold", { bg = cursorline_bg })
