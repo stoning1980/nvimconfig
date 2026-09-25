@@ -3,7 +3,8 @@
 --   :CompareHead  compare HEAD with a previous commit (Tab: last 20 ancestors)
 --   :CodeReview   compare HEAD with a local or remote branch (Tab: ordered branches)
 --   :EditDiff     open every file differing from a base branch as a buffer
---                 (same branch list as :CodeReview; confirms past 20 files)
+--                 (same branch list as :CodeReview, defaults to origin/develop;
+--                 confirms past 20 files)
 --   :CompareFiles diff two repo files picked from a fuzzy list (Tab to select two)
 --   :DiffThisFile pick a version from a popup (same list as :CodeReview) and
 --                 diff the focused file against it
@@ -221,23 +222,24 @@ end
 -- branch easily matches hundreds of unrelated files.
 local EDIT_DIFF_CONFIRM_AT = 20
 
+-- Base branch used when :EditDiff is called without an argument.
+local EDIT_DIFF_DEFAULT_BASE = "origin/develop"
+
 -- Open every file that differs from a base branch as an editable buffer (as
 -- opposed to :CodeReview, which opens the same set in a read-only Diffview).
 --
 -- The argument is a "(NN) <branch>" completion item (see complete_branches) or a
--- raw branch name, and the file set comes from the same three-dot range
--- :CodeReview diffs: files changed on HEAD's side since the merge-base.
--- `--diff-filter=d` drops files deleted on HEAD, which would only open empty
--- buffers. Files are added with :badd (cheap, no LSP/Treesitter attach) and only
--- the first is actually opened.
+-- raw branch name; with no argument the base is origin/develop. The file set
+-- comes from the same three-dot range :CodeReview diffs: files changed on
+-- HEAD's side since the merge-base. `--diff-filter=d` drops files deleted on
+-- HEAD, which would only open empty buffers. Files are added with :badd (cheap,
+-- no LSP/Treesitter attach) and only the first is actually opened.
 function M.edit_diff(branch)
-  if not branch or branch == "" then
-    notify("Provide a base branch (Tab to complete)", vim.log.levels.WARN)
-    return
-  end
-
   -- Strip the "(NN) " prefix from a completion item, if present.
-  local name = branch:match("^%(%d+%)%s+(.+)$") or branch:match("^%S+")
+  local name = EDIT_DIFF_DEFAULT_BASE
+  if branch and branch ~= "" then
+    name = branch:match("^%(%d+%)%s+(.+)$") or branch:match("^%S+")
+  end
 
   local root = repo_root()
   if not root then
