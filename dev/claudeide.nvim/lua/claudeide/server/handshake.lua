@@ -26,6 +26,28 @@ function M.parse_request(data)
   return { method = method, path = path, headers = headers }
 end
 
+--- Pick the subprotocol to echo back. Claude Code (Bun >= 1.4) aborts the
+--- connection right after the 101 unless the server selects one of the
+--- subprotocols it offered, so "mcp" must be mirrored when requested.
+---@param value string|nil raw Sec-WebSocket-Protocol request header
+---@return string|nil
+local function select_protocol(value)
+  if not value then
+    return nil
+  end
+  local first
+  for token in value:gmatch("[^,]+") do
+    token = token:match("^%s*(.-)%s*$")
+    if token ~= "" then
+      if token:lower() == "mcp" then
+        return token
+      end
+      first = first or token
+    end
+  end
+  return first
+end
+
 --- Build the 101 Switching Protocols response, or an error response.
 ---@param request table parsed request
 ---@param auth_token string expected auth token
@@ -46,15 +68,19 @@ function M.response(request, auth_token)
   end
 
   local accept = crypto.websocket_accept(key)
-  local response = table.concat({
+  local lines = {
     "HTTP/1.1 101 Switching Protocols",
     "Upgrade: websocket",
     "Connection: Upgrade",
     "Sec-WebSocket-Accept: " .. accept,
-    "",
-    "",
-  }, "\r\n")
-  return response, true
+  }
+  local protocol = select_protocol(headers["sec-websocket-protocol"])
+  if protocol then
+    lines[#lines + 1] = "Sec-WebSocket-Protocol: " .. protocol
+  end
+  lines[#lines + 1] = ""
+  lines[#lines + 1] = ""
+  return table.concat(lines, "\r\n"), true
 end
 
 return M
