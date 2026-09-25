@@ -72,17 +72,15 @@ end
 
 --- Ensure the server is running and tell the user how to connect.
 function M.connect_hint()
+  local already_running = M.started
   if not M.start() then
     return
   end
-  vim.notify(
-    table.concat({
-      "Claude IDE server is running on 127.0.0.1:" .. tostring(M.port),
-      "In your running `claude` CLI session, type:  /ide",
-      "then pick \"Neovim\" to connect.",
-    }, "\n"),
-    vim.log.levels.INFO
-  )
+  -- A fresh start() already announced the port, so only speak up when the
+  -- server was up beforehand and the keypress would otherwise look inert.
+  if already_running then
+    util.info("IDE server already listening on 127.0.0.1:" .. tostring(M.port) .. " - run /ide to connect")
+  end
 end
 
 function M.status()
