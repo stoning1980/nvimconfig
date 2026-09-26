@@ -445,6 +445,14 @@ function M.diff_this_file(arg)
   end
 
   vim.cmd("DiffviewOpen " .. rev .. "...HEAD -- " .. vim.fn.fnameescape(file))
+
+  -- The file panel only ever lists the one file we asked for, so close it and
+  -- give the whole width to the diff. :DiffviewToggleFiles (<F2>) brings it
+  -- back. The panel is up by the time :DiffviewOpen returns.
+  local view = require("diffview.lib").get_current_view()
+  if view and view.panel and view.panel:is_open() then
+    view.panel:close()
+  end
 end
 
 function M.setup()
