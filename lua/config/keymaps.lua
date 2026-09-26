@@ -3,7 +3,7 @@
 -- Add any additional keymaps here
 --
 -- ┌─ Function key cheatsheet (this file + plugin keys) ──────────────────┐
--- │ F1      : n → toggle Diffview (git index diff)                       │
+-- │ F1      : n → toggle Diffview (pick: git status / branch vs HEAD)    │
 -- │ F2      : n → toggle Diffview file panel                             │
 -- │ S-F1    : n → toggle git annotate panel (per-line author/date)       │
 -- │ S-F2    : n → open current diff's two sides in Beyond Compare        │
@@ -38,10 +38,18 @@ local function diffview_view()
   return lib.get_current_view()
 end
 
--- Toggle Diffview: open git index diff if closed, close all diff tabs if open.
+-- Toggle Diffview: close all diff tabs if one is open, else ask what to diff.
+--
+-- The prompt lists the uncommitted changes first, then the same ordered branch
+-- list `:CodeReview`/`:EditDiff` complete against (origin/develop first). The
+-- first entry opens a bare `:DiffviewOpen` (working tree vs index+HEAD); a
+-- branch opens `branch...HEAD`, i.e. what HEAD added since the merge-base.
+--
 -- When nvim was launched from the terminal wrapper purely to review a diff
 -- (g:dv_from_terminal set by pdf/codereview/dvlc), closing the Diffview should
 -- quit nvim entirely rather than drop into an empty session.
+local WORKING_TREE = "Git status (uncommitted changes)"
+
 local function toggle_diffview()
   if diffview_view() then
     if vim.g.dv_from_terminal then
@@ -49,9 +57,22 @@ local function toggle_diffview()
     else
       vim.cmd("DiffviewClose")
     end
-  else
-    vim.cmd("DiffviewOpen")
+    return
   end
+
+  local choices = { WORKING_TREE }
+  vim.list_extend(choices, require("config.git_diff").get_branches())
+
+  vim.ui.select(choices, { prompt = "Diffview:" }, function(choice)
+    if not choice then
+      return
+    end
+    if choice == WORKING_TREE then
+      vim.cmd("DiffviewOpen")
+    else
+      vim.cmd("DiffviewOpen " .. choice .. "...HEAD")
+    end
+  end)
 end
 
 -- Toggle the current Diffview's layout between side-by-side (left/right) and
@@ -71,18 +92,22 @@ vim.api.nvim_create_user_command("DiffviewCycleLayout", cycle_diffview_layout, {
   desc = "Toggle Diffview layout (side-by-side ↔ stacked)",
 })
 
--- F1: Toggle Diffview.
+-- F1: Toggle Diffview (picks a base when opening).
 map("n", "<F1>", toggle_diffview, { desc = "Toggle Diffview" })
 
 -- F2: Toggle the Diffview file panel (maximizes space for the code diff).
 map("n", "<F2>", "<cmd>DiffviewToggleFiles<cr>", { desc = "Toggle Diffview File Panel" })
 
+-- Give Snacks' `vim.ui.select` picker an integral list height, which it
+-- otherwise miscomputes and crashes on (see lua/config/ui_select.lua).
+require("config.ui_select").setup()
+
 -- Register the `:Pdf` (a commit's own changes), `:CompareHead` (HEAD vs a
 -- previous commit), `:CodeReview` (HEAD vs local/remote branch, with
 -- branch-name completion), `:EditDiff` (open the files that differ from a base
 -- branch as buffers, same branch completion, defaults to origin/develop) and
--- `:DiffThisFile` (diff the focused file against a branch picked from a popup)
--- commands.
+-- `:DiffThisFile` (diff the focused file against a branch, same completion and
+-- default) commands.
 require("config.git_diff").setup()
 
 -- Register the `:Goto` project switcher (recents + autojump.txt list).
