@@ -6,8 +6,8 @@
 --                 (same branch list as :CodeReview, defaults to origin/develop;
 --                 confirms past 20 files)
 --   :CompareFiles diff two repo files picked from a fuzzy list (Tab to select two)
---   :DiffThisFile pick a version from a popup (same list as :CodeReview) and
---                 diff the focused file against it
+--   :DiffThisFile diff the focused file against a version (same branch list as
+--                 :CodeReview, defaults to origin/develop)
 --   :CompareVersionFile pick a version (Tab to complete), then a file, to diff
 --                 HEAD's copy of that file against the chosen version's copy
 local M = {}
@@ -222,8 +222,8 @@ end
 -- branch easily matches hundreds of unrelated files.
 local EDIT_DIFF_CONFIRM_AT = 20
 
--- Base branch used when :EditDiff is called without an argument.
-local EDIT_DIFF_DEFAULT_BASE = "origin/develop"
+-- Base branch used when :EditDiff or :DiffThisFile is called without an argument.
+local DEFAULT_BASE = "origin/develop"
 
 -- Open every file that differs from a base branch as an editable buffer (as
 -- opposed to :CodeReview, which opens the same set in a read-only Diffview).
@@ -236,7 +236,7 @@ local EDIT_DIFF_DEFAULT_BASE = "origin/develop"
 -- no LSP/Treesitter attach) and only the first is actually opened.
 function M.edit_diff(branch)
   -- Strip the "(NN) " prefix from a completion item, if present.
-  local name = EDIT_DIFF_DEFAULT_BASE
+  local name = DEFAULT_BASE
   if branch and branch ~= "" then
     name = branch:match("^%(%d+%)%s+(.+)$") or branch:match("^%S+")
   end
@@ -416,11 +416,11 @@ end
 -- Diff the focused file against a version, in Diffview.
 --
 -- Like :CodeReview narrowed to one file, and like :CompareVersionFile without
--- the file picker: the file is the one already in front of you. With no
--- argument the same ordered branch list pops up for selection (vim.ui.select,
--- i.e. a Snacks picker); a "(NN) <branch>" completion item or raw revision is
--- also accepted. Diffview opens rev...HEAD limited to that file, so the left
--- side is the merge-base with rev and the right side is HEAD.
+-- the file picker: the file is the one already in front of you. The argument is
+-- a "(NN) <branch>" completion item (see complete_branches) or a raw revision;
+-- with no argument the base is origin/develop. Diffview opens rev...HEAD
+-- limited to that file, so the left side is the merge-base with rev and the
+-- right side is HEAD.
 function M.diff_this_file(arg)
   local root = repo_root()
   if not root then
@@ -438,28 +438,13 @@ function M.diff_this_file(arg)
     return
   end
 
-  local function diff(rev)
-    vim.cmd("DiffviewOpen " .. rev .. "...HEAD -- " .. vim.fn.fnameescape(file))
-  end
-
+  -- Strip the "(NN) " prefix from a completion item, if present.
+  local rev = DEFAULT_BASE
   if arg and arg ~= "" then
-    -- Strip the "(NN) " prefix from a completion item, if present.
-    diff(arg:match("^%(%d+%)%s+(.+)$") or arg:match("^%S+"))
-    return
+    rev = arg:match("^%(%d+%)%s+(.+)$") or arg:match("^%S+")
   end
 
-  local branches = get_branches()
-  if #branches == 0 then
-    notify("No branches found", vim.log.levels.WARN)
-    return
-  end
-  vim.ui.select(branches, {
-    prompt = "Diff " .. vim.fn.fnamemodify(file, ":t") .. " against:",
-  }, function(choice)
-    if choice then
-      diff(choice)
-    end
-  end)
+  vim.cmd("DiffviewOpen " .. rev .. "...HEAD -- " .. vim.fn.fnameescape(file))
 end
 
 function M.setup()
@@ -517,7 +502,7 @@ function M.setup()
     complete = function()
       return M.complete_branches()
     end,
-    desc = "Diffview: diff the focused file against a version (picker)",
+    desc = "Diffview: diff the focused file against a version (default origin/develop)",
   })
 
   vim.api.nvim_create_user_command("CompareVersionFile", function(opts)
