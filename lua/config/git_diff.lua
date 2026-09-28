@@ -19,8 +19,9 @@ end
 -- Remote base branches surfaced at the very top of the list, in this order.
 local PRIORITY_REMOTES = { "origin/develop", "origin/master", "origin/main", "origin/dev" }
 
--- Cap on remote branches to list (after the priority ones). Keeps the picker
--- fast in repos with thousands of remote branches.
+-- Cap on remote branches to list (after the priority ones), when the full
+-- listing is asked for. Keeps the picker manageable in repos with thousands of
+-- remote branches.
 local MAX_REMOTES = 100
 
 local function git_lines(args)
@@ -38,35 +39,33 @@ local function git_lines(args)
   return res
 end
 
--- Return branch names ordered for quick review selection:
---   1-4. origin/develop, origin/master, origin/main, origin/dev (if present)
---   5.   the 3 most-recently-committed local branches (newest first)
---   6.   everything else: remaining remote branches, then remaining locals
---        (each newest-committed first)
---
--- Only the MAX_REMOTES most-recently-committed remote branches are listed, so
--- the query stays fast in repos with very many remote branches. We ask git for
--- a few extra to absorb the "origin/HEAD" pointer we filter out below.
-local function get_branches()
-  local locals =
-    git_lines({ "git", "for-each-ref", "--sort=-committerdate", "--format=%(refname:short)", "refs/heads/" })
-  if not locals then
-    notify("Failed to list branches (not a git repo?)", vim.log.levels.ERROR)
-    return {}
-  end
+-- Local branches, newest-committed first. Cheap: a repo has few of them.
+local LOCALS_ARGS = { "git", "for-each-ref", "--sort=-committerdate", "--format=%(refname:short)", "refs/heads/" }
 
+-- Which PRIORITY_REMOTES exist. Asking for those refs by name keeps this to one
+-- cheap for-each-ref no matter how many remote branches the repo has.
+local PRIORITY_ARGS = { "git", "for-each-ref", "--format=%(refname:short)" }
+for _, p in ipairs(PRIORITY_REMOTES) do
+  table.insert(PRIORITY_ARGS, "refs/remotes/" .. p)
+end
+
+-- Every remote branch, newest-committed first. This is the slow listing:
+-- `--sort=-committerdate` makes git read a commit object for every remote ref,
+-- which takes ~5s in a repo with 13k of them (unsorted, the same refs take
+-- 40ms). Callers opt into it explicitly; see get_branches. We ask for a few
+-- extra refs to absorb the symbolic "origin/HEAD" pointer filtered out below.
+local REMOTES_ARGS = {
+  "git",
+  "for-each-ref",
+  "--sort=-committerdate",
+  "--count=" .. (MAX_REMOTES + 5),
+  "--format=%(refname:short)",
+  "refs/remotes/",
+}
+
+local function filter_remotes(lines)
   local remotes = {}
-  for _, r in
-    ipairs(git_lines({
-      "git",
-      "for-each-ref",
-      "--sort=-committerdate",
-      "--count=" .. (MAX_REMOTES + 5),
-      "--format=%(refname:short)",
-      "refs/remotes/",
-    }) or {})
-  do
-    -- Skip the symbolic "origin/HEAD" pointer.
+  for _, r in ipairs(lines or {}) do
     if r:find("/") and not r:find("HEAD") then
       table.insert(remotes, r)
       if #remotes >= MAX_REMOTES then
@@ -74,7 +73,23 @@ local function get_branches()
       end
     end
   end
+  return remotes
+end
 
+local function as_set(lines)
+  local set = {}
+  for _, l in ipairs(lines or {}) do
+    set[l] = true
+  end
+  return set
+end
+
+-- Branch names ordered for quick review selection:
+--   1-4. origin/develop, origin/master, origin/main, origin/dev (if present)
+--   5.   local branches, newest-committed first
+-- With remotes supplied, the 3 newest locals come first, then the remotes, then
+-- the remaining locals.
+local function order_branches(locals, priority, remotes)
   local seen = {}
   local ordered = {}
   local function add(name)
@@ -84,25 +99,15 @@ local function get_branches()
     end
   end
 
-  local remote_set = {}
-  for _, r in ipairs(remotes) do
-    remote_set[r] = true
-  end
-  -- Surface priority remotes first. If one fell outside the MAX_REMOTES window
-  -- fetched above, verify it directly so it still shows.
   for _, p in ipairs(PRIORITY_REMOTES) do
-    if remote_set[p] then
-      add(p)
-    elseif vim.fn.system({ "git", "rev-parse", "--verify", "--quiet", "refs/remotes/" .. p }) ~= "" then
+    if priority[p] then
       add(p)
     end
   end
-
   for i = 1, math.min(3, #locals) do
     add(locals[i])
   end
-
-  for _, r in ipairs(remotes) do
+  for _, r in ipairs(remotes or {}) do
     add(r)
   end
   for _, l in ipairs(locals) do
@@ -112,7 +117,83 @@ local function get_branches()
   return ordered
 end
 
+-- List branches, blocking until git answers.
+--
+-- The two queries behind the default list are cheap, so Tab completion (which
+-- has to return a value synchronously) can afford them. The remote branches
+-- beyond the priority ones are the expensive listing, so they are left out
+-- unless `opts.all_remotes` asks for them. Nothing is lost by leaving them out:
+-- every command here also takes a raw branch name, which needs no listing.
+---@param opts? { all_remotes?: boolean }
+local function get_branches(opts)
+  local locals = git_lines(LOCALS_ARGS)
+  if not locals then
+    notify("Failed to list branches (not a git repo?)", vim.log.levels.ERROR)
+    return {}
+  end
+  local remotes = opts and opts.all_remotes and filter_remotes(git_lines(REMOTES_ARGS)) or {}
+  return order_branches(locals, as_set(git_lines(PRIORITY_ARGS)), remotes)
+end
+
 M.get_branches = get_branches
+
+-- List branches without blocking, handing the same ordered list to `cb`.
+--
+-- Prefer this wherever a callback will do. Even though the queries themselves
+-- are quick, `git` can take tens of seconds to so much as print its version
+-- when something outside this config is wrong with it — a trace2 log directory
+-- grown to 60k files did exactly that here — and a frozen editor makes that
+-- look like Neovim's fault. Running the queries concurrently also means the
+-- slow all_remotes listing costs no more than its own query.
+---@param opts? { all_remotes?: boolean }
+---@param cb fun(branches: string[])
+function M.get_branches_async(opts, cb)
+  local want_remotes = opts and opts.all_remotes or false
+  local results = {}
+  local pending = want_remotes and 3 or 2
+
+  local function collect(key)
+    return function(out)
+      results[key] = out
+      pending = pending - 1
+      if pending > 0 then
+        return
+      end
+      if not results.locals then
+        notify("Failed to list branches (not a git repo?)", vim.log.levels.ERROR)
+        cb({})
+        return
+      end
+      cb(order_branches(results.locals, as_set(results.priority), filter_remotes(results.remotes)))
+    end
+  end
+
+  local function run(args, done)
+    vim.system(args, { text = true }, function(res)
+      local lines = nil
+      if res.code == 0 then
+        lines = {}
+        for _, line in ipairs(vim.split(res.stdout or "", "\n")) do
+          line = vim.trim(line)
+          if line ~= "" then
+            table.insert(lines, line)
+          end
+        end
+      end
+      -- vim.system calls back in a fast event context, where most of the API
+      -- (and our notify) is off limits.
+      vim.schedule(function()
+        done(lines)
+      end)
+    end)
+  end
+
+  run(LOCALS_ARGS, collect("locals"))
+  run(PRIORITY_ARGS, collect("priority"))
+  if want_remotes then
+    run(REMOTES_ARGS, collect("remotes"))
+  end
+end
 
 local function open(rev)
   vim.cmd("DiffviewOpen " .. rev)
