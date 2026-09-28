@@ -45,10 +45,66 @@ end
 -- first entry opens a bare `:DiffviewOpen` (working tree vs index+HEAD); a
 -- branch opens `branch...HEAD`, i.e. what HEAD added since the merge-base.
 --
+-- The last entry re-opens the prompt with every remote branch. That listing is
+-- the one slow query in a big repo (see lua/config/git_diff.lua), so it is kept
+-- behind a deliberate choice instead of delaying the prompt for everyone.
+--
 -- When nvim was launched from the terminal wrapper purely to review a diff
 -- (g:dv_from_terminal set by pdf/codereview/dvlc), closing the Diffview should
 -- quit nvim entirely rather than drop into an empty session.
 local WORKING_TREE = "Git status (uncommitted changes)"
+local ALL_REMOTES = "All remote branches (slow in large repos)"
+
+-- Progress toast shown while git lists branches, from the keypress until the
+-- prompt appears. Redrawn on this interval to animate the spinner, and given a
+-- running count of seconds so a long wait is visibly a wait rather than a hang.
+-- There is no percentage to fill a bar with: git reports no progress for these
+-- queries, so the only honest readouts are "still working" and "for how long".
+local PROGRESS_TICK_MS = 80
+local PROGRESS_ID = "diffview_branches"
+
+local function open_base(choice)
+  if choice == WORKING_TREE then
+    vim.cmd("DiffviewOpen")
+  else
+    vim.cmd("DiffviewOpen " .. choice .. "...HEAD")
+  end
+end
+
+-- Collect branches off the main loop while a progress toast runs, then hand
+-- them to `on_ready`.
+local function branches(opts, on_ready)
+  local started = vim.uv.hrtime()
+
+  local function render()
+    local secs = (vim.uv.hrtime() - started) / 1e9
+    vim.notify(
+      secs < 1 and "Listing branches…" or string.format("Listing branches… %ds", math.floor(secs)),
+      vim.log.levels.INFO,
+      {
+        id = PROGRESS_ID,
+        title = "Diffview",
+        icon = Snacks.util.spinner(),
+        timeout = false,
+      }
+    )
+  end
+
+  render()
+  local timer = vim.uv.new_timer()
+  timer:start(PROGRESS_TICK_MS, PROGRESS_TICK_MS, vim.schedule_wrap(render))
+
+  require("config.git_diff").get_branches_async(opts, function(list)
+    if not timer:is_closing() then
+      timer:stop()
+      timer:close()
+    end
+    pcall(function()
+      Snacks.notifier.hide(PROGRESS_ID)
+    end)
+    on_ready(list)
+  end)
+end
 
 local function toggle_diffview()
   if diffview_view() then
@@ -60,18 +116,27 @@ local function toggle_diffview()
     return
   end
 
-  local choices = { WORKING_TREE }
-  vim.list_extend(choices, require("config.git_diff").get_branches())
+  branches(nil, function(list)
+    local choices = { WORKING_TREE }
+    vim.list_extend(choices, list)
+    table.insert(choices, ALL_REMOTES)
 
-  vim.ui.select(choices, { prompt = "Diffview:" }, function(choice)
-    if not choice then
-      return
-    end
-    if choice == WORKING_TREE then
-      vim.cmd("DiffviewOpen")
-    else
-      vim.cmd("DiffviewOpen " .. choice .. "...HEAD")
-    end
+    vim.ui.select(choices, { prompt = "Diffview:" }, function(choice)
+      if not choice then
+        return
+      end
+      if choice ~= ALL_REMOTES then
+        open_base(choice)
+        return
+      end
+      branches({ all_remotes = true }, function(all)
+        vim.ui.select(all, { prompt = "Diffview (all remote branches):" }, function(branch)
+          if branch then
+            open_base(branch)
+          end
+        end)
+      end)
+    end)
   end)
 end
 
