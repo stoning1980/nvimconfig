@@ -194,12 +194,25 @@ end
 map("n", "<S-F2>", open_beyond_compare, { desc = "Open diff in Beyond Compare" })
 map("n", "<F14>", open_beyond_compare, { desc = "Open diff in Beyond Compare" })
 
--- F3 / Shift+F3: Jump to next / previous diff hunk — only inside a Diffview.
--- The ]c / [c motions only work in a diff-mode window, so if focus is on the
--- file panel (or anywhere else) we jump into a diff window first. Prefer the
--- left panel (`a`) — get_main_win() returns the right panel (`b`), but the left
--- reads more naturally right after the file panel; fall back to the main win
--- when the left side is null (e.g. added files) or otherwise unavailable.
+-- A diff side worth landing on: a live window that is not showing the empty
+-- buffer diffview puts on the missing side of an added or deleted file. That
+-- buffer is recognisable only by name — the window's `file.nulled` stays false
+-- for it, since the file does exist on the other side of the diff.
+local NULL_DIFF_BUF = "diffview://null"
+
+local function diff_win_usable(win)
+  if not (win and win.id and vim.api.nvim_win_is_valid(win.id)) then
+    return false
+  end
+  return vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(win.id)) ~= NULL_DIFF_BUF
+end
+
+-- F3: Jump to the next diff hunk — only inside a Diffview.
+-- The ]c motion only works in a diff-mode window, so if focus is on the file
+-- panel (or anywhere else) we jump into a diff window first. Land on the right
+-- panel (`b`, which is what get_main_win() returns): that side holds HEAD's
+-- copy, the one worth reading and the only one you can edit. Deleted files have
+-- nothing there, so those fall back to the left panel (`a`).
 local function goto_diff_hunk(motion)
   local view = diffview_view()
   if not view then
@@ -213,12 +226,13 @@ local function goto_diff_hunk(motion)
     return
   end
   local layout = view.cur_layout
-  local win = layout and layout.a
-  if not (win and win.id and vim.api.nvim_win_is_valid(win.id)) then
-    local ok, main = pcall(function()
-      return layout:get_main_win()
-    end)
-    win = ok and main or nil
+  local ok, main = pcall(function()
+    return layout:get_main_win()
+  end)
+  local win = ok and main or nil
+  if not diff_win_usable(win) then
+    local left = layout and layout.a
+    win = diff_win_usable(left) and left or win
   end
   if win and win.id and vim.api.nvim_win_is_valid(win.id) then
     vim.api.nvim_set_current_win(win.id)
