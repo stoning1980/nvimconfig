@@ -55,14 +55,6 @@ end
 local WORKING_TREE = "Git status (uncommitted changes)"
 local ALL_REMOTES = "All remote branches (slow in large repos)"
 
--- Progress toast shown while git lists branches, from the keypress until the
--- prompt appears. Redrawn on this interval to animate the spinner, and given a
--- running count of seconds so a long wait is visibly a wait rather than a hang.
--- There is no percentage to fill a bar with: git reports no progress for these
--- queries, so the only honest readouts are "still working" and "for how long".
-local PROGRESS_TICK_MS = 80
-local PROGRESS_ID = "diffview_branches"
-
 local function open_base(choice)
   if choice == WORKING_TREE then
     vim.cmd("DiffviewOpen")
@@ -71,39 +63,63 @@ local function open_base(choice)
   end
 end
 
--- Collect branches off the main loop while a progress toast runs, then hand
--- them to `on_ready`.
-local function branches(opts, on_ready)
-  local started = vim.uv.hrtime()
-
-  local function render()
-    local secs = (vim.uv.hrtime() - started) / 1e9
-    vim.notify(
-      secs < 1 and "Listing branches…" or string.format("Listing branches… %ds", math.floor(secs)),
-      vim.log.levels.INFO,
-      {
-        id = PROGRESS_ID,
-        title = "Diffview",
-        icon = Snacks.util.spinner(),
-        timeout = false,
-      }
-    )
+-- Open the branch picker at once and fill it in as git answers. The picker
+-- holds focus from the keypress on, so nothing typed while git is still
+-- listing can land in the buffer underneath; Snacks shows its busy spinner
+-- until the finder returns. `head`/`tail` entries frame the git results.
+---@param opts { title: string, all_remotes?: boolean, head?: string[], tail?: string[] }
+---@param on_choice fun(choice: string)
+local function pick_branch(opts, on_choice)
+  local idx = 0
+  local function item(name)
+    idx = idx + 1
+    return { text = idx .. " " .. name, item = name, idx = idx }
   end
 
-  render()
-  local timer = vim.uv.new_timer()
-  timer:start(PROGRESS_TICK_MS, PROGRESS_TICK_MS, vim.schedule_wrap(render))
-
-  require("config.git_diff").get_branches_async(opts, function(list)
-    if not timer:is_closing() then
-      timer:stop()
-      timer:close()
-    end
-    pcall(function()
-      Snacks.notifier.hide(PROGRESS_ID)
-    end)
-    on_ready(list)
-  end)
+  Snacks.picker.pick({
+    source = "select",
+    title = opts.title,
+    format = Snacks.picker.format.ui_select({}),
+    layout = {
+      config = function(layout)
+        for _, box in ipairs(layout.layout) do
+          if box.win == "list" and not box.height then
+            box.height = math.max(math.floor(vim.o.lines * 0.8 - 10), 2)
+          end
+        end
+      end,
+    },
+    finder = function(_, ctx)
+      return function(cb)
+        for _, name in ipairs(opts.head or {}) do
+          cb(item(name))
+        end
+        local list
+        require("config.git_diff").get_branches_async({ all_remotes = opts.all_remotes }, function(res)
+          list = res
+          ctx.async:resume()
+        end)
+        ctx.async:suspend()
+        if not list then
+          return
+        end
+        for _, name in ipairs(list) do
+          cb(item(name))
+        end
+        for _, name in ipairs(opts.tail or {}) do
+          cb(item(name))
+        end
+      end
+    end,
+    confirm = function(picker, it)
+      picker:close()
+      if it then
+        vim.schedule(function()
+          on_choice(it.item)
+        end)
+      end
+    end,
+  })
 end
 
 local function toggle_diffview()
@@ -116,27 +132,12 @@ local function toggle_diffview()
     return
   end
 
-  branches(nil, function(list)
-    local choices = { WORKING_TREE }
-    vim.list_extend(choices, list)
-    table.insert(choices, ALL_REMOTES)
-
-    vim.ui.select(choices, { prompt = "Diffview:" }, function(choice)
-      if not choice then
-        return
-      end
-      if choice ~= ALL_REMOTES then
-        open_base(choice)
-        return
-      end
-      branches({ all_remotes = true }, function(all)
-        vim.ui.select(all, { prompt = "Diffview (all remote branches):" }, function(branch)
-          if branch then
-            open_base(branch)
-          end
-        end)
-      end)
-    end)
+  pick_branch({ title = "Diffview", head = { WORKING_TREE }, tail = { ALL_REMOTES } }, function(choice)
+    if choice ~= ALL_REMOTES then
+      open_base(choice)
+      return
+    end
+    pick_branch({ title = "Diffview (all remote branches)", all_remotes = true }, open_base)
   end)
 end
 
