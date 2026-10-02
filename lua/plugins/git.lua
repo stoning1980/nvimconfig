@@ -13,12 +13,6 @@ return {
       default_args = {
         DiffviewOpen = { "-uno" },
       },
-      -- Put the file list on the right, beside HEAD's copy of the file, which
-      -- is the side <F3> lands on and the one worth reading. Only `position` is
-      -- set: diffview deep-merges this over its defaults, so width stays 35.
-      file_panel = {
-        win_config = { position = "right" },
-      },
     },
   },
 }
