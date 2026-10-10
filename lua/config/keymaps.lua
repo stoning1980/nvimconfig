@@ -4,7 +4,7 @@
 --
 -- ┌─ Function key cheatsheet (this file + plugin keys) ──────────────────┐
 -- │ F1      : n → toggle Diffview (status / HEAD~ / branch vs HEAD)      │
--- │ F2      : n → toggle Diffview file panel                             │
+-- │ F2      : n → open files changed vs a picked base (same menu as F1)  │
 -- │ S-F1    : n → toggle git annotate panel (per-line author/date)       │
 -- │ S-F2    : n → open current diff's two sides in Beyond Compare        │
 -- │ F3      : n → next diff hunk (Diffview only; error else)             │
@@ -25,6 +25,7 @@
 -- │ Note: terminals emit S-Fn as F(n+12): S-F1=F13 S-F12=F24 …           │
 -- │ Commands without a key: :DiffviewCycleLayout (side-by-side ↔ stacked)│
 -- │                         :GitGrep (grep git-tracked files only)       │
+-- │                         :DiffviewToggleFiles (Diffview file panel)   │
 -- └─────────────────────────────────────────────────────────────────────┘
 
 local map = vim.keymap.set
@@ -58,42 +59,56 @@ local WORKING_TREE = "Git status (uncommitted changes)"
 local PREVIOUS_COMMIT = "Compare HEAD with its previous (HEAD~..HEAD)"
 local ALL_REMOTES = "All remote branches (slow in large repos)"
 
-local function describe_base(choice)
+-- The git range a picker choice stands for; nil means the uncommitted changes.
+local function base_range(choice)
   if choice == WORKING_TREE then
-    return "Working tree vs index + HEAD\n\n:DiffviewOpen\n\nEverything not yet committed (staged and unstaged)."
+    return nil
   elseif choice == PREVIOUS_COMMIT then
-    return "HEAD vs its parent\n\n:DiffviewOpen HEAD~..HEAD\n\nThe changes made by the last commit."
-  elseif choice == ALL_REMOTES then
+    return "HEAD~..HEAD"
+  end
+  return choice .. "...HEAD"
+end
+
+-- Preview text for a picker choice. `edit` describes <F2> (open the changed
+-- files as buffers) rather than <F1> (open a Diffview).
+local function describe_base(choice, edit)
+  if choice == ALL_REMOTES then
     return "List every remote branch\n\nRe-opens this picker with all remote branches.\nSlow in large repos."
   end
-  return ("%s vs HEAD\n\n:DiffviewOpen %s...HEAD\n\nWhat HEAD added since its merge-base with %s."):format(
-    choice,
-    choice,
-    choice
-  )
+  local title, scope
+  if choice == WORKING_TREE then
+    title = "Working tree vs index + HEAD"
+    scope = edit and "Everything not yet committed (staged, unstaged and untracked)."
+      or "Everything not yet committed (staged and unstaged)."
+  elseif choice == PREVIOUS_COMMIT then
+    title, scope = "HEAD vs its parent", "The changes made by the last commit."
+  else
+    title, scope = choice .. " vs HEAD", "What HEAD added since its merge-base with " .. choice .. "."
+  end
+  if edit then
+    return ("%s\n\nOpens every changed file as a buffer (deleted files are skipped).\n\n%s"):format(title, scope)
+  end
+  local range = base_range(choice)
+  return ("%s\n\n:DiffviewOpen%s\n\n%s"):format(title, range and (" " .. range) or "", scope)
 end
 
 local function open_base(choice)
-  if choice == WORKING_TREE then
-    vim.cmd("DiffviewOpen")
-  elseif choice == PREVIOUS_COMMIT then
-    vim.cmd("DiffviewOpen HEAD~..HEAD")
-  else
-    vim.cmd("DiffviewOpen " .. choice .. "...HEAD")
-  end
+  local range = base_range(choice)
+  vim.cmd("DiffviewOpen" .. (range and (" " .. range) or ""))
 end
 
 -- Open the branch picker at once and fill it in as git answers. The picker
 -- holds focus from the keypress on, so nothing typed while git is still
 -- listing can land in the buffer underneath; Snacks shows its busy spinner
 -- until the finder returns. `head`/`tail` entries frame the git results.
----@param opts { title: string, all_remotes?: boolean, head?: string[], tail?: string[] }
+---@param opts { title: string, edit?: boolean, all_remotes?: boolean, head?: string[], tail?: string[] }
 ---@param on_choice fun(choice: string)
 local function pick_branch(opts, on_choice)
   local idx = 0
   local function item(name)
     idx = idx + 1
-    return { text = idx .. " " .. name, item = name, idx = idx, preview = { text = describe_base(name), loc = false } }
+    local preview = { text = describe_base(name, opts.edit), loc = false }
+    return { text = idx .. " " .. name, item = name, idx = idx, preview = preview }
   end
 
   Snacks.picker.pick({
@@ -143,6 +158,22 @@ local function pick_branch(opts, on_choice)
   })
 end
 
+-- The <F1>/<F2> base picker: uncommitted changes, HEAD~..HEAD, the branch list,
+-- and a last entry that re-opens it with every remote branch.
+---@param opts { title: string, edit?: boolean }
+---@param on_base fun(choice: string)
+local function pick_base(opts, on_base)
+  local first =
+    { title = opts.title, edit = opts.edit, head = { WORKING_TREE, PREVIOUS_COMMIT }, tail = { ALL_REMOTES } }
+  pick_branch(first, function(choice)
+    if choice ~= ALL_REMOTES then
+      on_base(choice)
+      return
+    end
+    pick_branch({ title = opts.title .. " (all remote branches)", edit = opts.edit, all_remotes = true }, on_base)
+  end)
+end
+
 local function toggle_diffview()
   if diffview_view() then
     if vim.g.dv_from_terminal then
@@ -152,13 +183,14 @@ local function toggle_diffview()
     end
     return
   end
+  pick_base({ title = "Diffview" }, open_base)
+end
 
-  pick_branch({ title = "Diffview", head = { WORKING_TREE, PREVIOUS_COMMIT }, tail = { ALL_REMOTES } }, function(choice)
-    if choice ~= ALL_REMOTES then
-      open_base(choice)
-      return
-    end
-    pick_branch({ title = "Diffview (all remote branches)", all_remotes = true }, open_base)
+-- Like <F1>, but instead of a Diffview it opens every file that differs from
+-- the chosen base as a regular, editable buffer.
+local function edit_changed_files()
+  pick_base({ title = "Open changed files", edit = true }, function(choice)
+    require("config.git_diff").edit_changed(base_range(choice))
   end)
 end
 
@@ -182,8 +214,9 @@ vim.api.nvim_create_user_command("DiffviewCycleLayout", cycle_diffview_layout, {
 -- F1: Toggle Diffview (picks a base when opening).
 map("n", "<F1>", toggle_diffview, { desc = "Toggle Diffview" })
 
--- F2: Toggle the Diffview file panel (maximizes space for the code diff).
-map("n", "<F2>", "<cmd>DiffviewToggleFiles<cr>", { desc = "Toggle Diffview File Panel" })
+-- F2: Open the files that differ from a picked base as buffers. The Diffview
+-- file panel toggle it used to hold is still `:DiffviewToggleFiles`.
+map("n", "<F2>", edit_changed_files, { desc = "Open changed files (pick base)" })
 
 -- Give Snacks' `vim.ui.select` picker an integral list height, which it
 -- otherwise miscomputes and crashes on (see lua/config/ui_select.lua).

@@ -286,41 +286,46 @@ local EDIT_DIFF_CONFIRM_AT = 20
 -- Base branch used when :EditDiff or :DiffThisFile is called without an argument.
 local DEFAULT_BASE = "origin/develop"
 
--- Open every file that differs from a base branch as an editable buffer (as
--- opposed to the <F1> branch picker, which opens the same set in a read-only
--- Diffview).
---
--- The argument is a "(NN) <branch>" completion item (see complete_branches) or a
--- raw branch name; with no argument the base is origin/develop. The file set
--- comes from the same three-dot range <F1> diffs: files changed on
--- HEAD's side since the merge-base. `--diff-filter=d` drops files deleted on
--- HEAD, which would only open empty buffers. Files are added with :badd (cheap,
--- no LSP/Treesitter attach) and only the first is actually opened.
-function M.edit_diff(branch)
-  -- Strip the "(NN) " prefix from a completion item, if present.
-  local name = DEFAULT_BASE
-  if branch and branch ~= "" then
-    name = branch:match("^%(%d+%)%s+(.+)$") or branch:match("^%S+")
+-- Repo-relative paths of the files changed in `range` (e.g. "HEAD~..HEAD" or
+-- "<branch>...HEAD"), or of the uncommitted ones — staged, unstaged and
+-- untracked — when `range` is nil. `--diff-filter=d` drops files deleted on
+-- HEAD's side, which would only open empty buffers. Nil when git fails.
+local function changed_files(root, range)
+  if range then
+    return git_lines({ "git", "-C", root, "diff", "--name-only", "--diff-filter=d", range })
   end
+  local files = git_lines({ "git", "-C", root, "diff", "--name-only", "--diff-filter=d", "HEAD" })
+  if not files then
+    return nil
+  end
+  vim.list_extend(files, git_lines({ "git", "-C", root, "ls-files", "--others", "--exclude-standard" }) or {})
+  return files
+end
 
+-- Open every file changed in `range` (see changed_files; nil = uncommitted
+-- changes) as an editable buffer, as opposed to <F1>, which shows the same set
+-- in a read-only Diffview. Files are added with :badd (cheap, no
+-- LSP/Treesitter attach) and only the first is actually opened.
+function M.edit_changed(range)
+  local what = range and ("changed in " .. range) or "with uncommitted changes"
   local root = repo_root()
   if not root then
     notify("Not a git repo", vim.log.levels.ERROR)
     return
   end
 
-  local files = git_lines({ "git", "diff", "--name-only", "--diff-filter=d", name .. "...HEAD" })
+  local files = changed_files(root, range)
   if not files then
-    notify("Failed to diff against " .. name .. " (unknown branch?)", vim.log.levels.ERROR)
+    notify("Failed to list files " .. what .. " (unknown revision?)", vim.log.levels.ERROR)
     return
   end
   if #files == 0 then
-    notify("No files differ from " .. name)
+    notify("No files " .. what)
     return
   end
 
   if #files > EDIT_DIFF_CONFIRM_AT then
-    local prompt = string.format("%d files differ from %s. Open all of them?", #files, name)
+    local prompt = string.format("%d files %s. Open all of them?", #files, what)
     if vim.fn.confirm(prompt, "&Yes\n&No", 2) ~= 1 then
       return
     end
@@ -330,7 +335,22 @@ function M.edit_diff(branch)
     vim.cmd("badd " .. vim.fn.fnameescape(root .. "/" .. rel))
   end
   vim.cmd("edit " .. vim.fn.fnameescape(root .. "/" .. files[1]))
-  notify(string.format("Opened %d file(s) differing from %s", #files, name))
+  notify(string.format("Opened %d file(s) %s", #files, what))
+end
+
+-- Open every file that differs from a base branch as an editable buffer.
+--
+-- The argument is a "(NN) <branch>" completion item (see complete_branches) or a
+-- raw branch name; with no argument the base is origin/develop. The file set
+-- comes from the same three-dot range <F1> diffs: files changed on HEAD's side
+-- since the merge-base.
+function M.edit_diff(branch)
+  -- Strip the "(NN) " prefix from a completion item, if present.
+  local name = DEFAULT_BASE
+  if branch and branch ~= "" then
+    name = branch:match("^%(%d+%)%s+(.+)$") or branch:match("^%S+")
+  end
+  M.edit_changed(name .. "...HEAD")
 end
 
 -- Absolute path of a Snacks picker item (git_files gives item.file relative to
@@ -509,7 +529,7 @@ function M.diff_this_file(arg)
   vim.cmd("DiffviewOpen " .. rev .. "...HEAD -- " .. vim.fn.fnameescape(file))
 
   -- The file panel only ever lists the one file we asked for, so close it and
-  -- give the whole width to the diff. :DiffviewToggleFiles (<F2>) brings it
+  -- give the whole width to the diff. :DiffviewToggleFiles brings it
   -- back. The panel is up by the time :DiffviewOpen returns.
   local view = require("diffview.lib").get_current_view()
   if view and view.panel and view.panel:is_open() then
