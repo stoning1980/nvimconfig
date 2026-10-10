@@ -1,13 +1,12 @@
 -- Diffview review commands:
 --   :Pdf          show one commit's own changes (Tab: last 20 commits incl. HEAD)
 --   :CompareHead  compare HEAD with a previous commit (Tab: last 20 ancestors)
---   :CodeReview   compare HEAD with a local or remote branch (Tab: ordered branches)
 --   :EditDiff     open every file differing from a base branch as a buffer
---                 (same branch list as :CodeReview, defaults to origin/develop;
+--                 (Tab: ordered branches, defaults to origin/develop;
 --                 confirms past 20 files)
 --   :CompareFiles diff two repo files picked from a fuzzy list (Tab to select two)
 --   :DiffThisFile diff the focused file against a version (same branch list as
---                 :CodeReview, defaults to origin/develop)
+--                 :EditDiff, defaults to origin/develop)
 --   :CompareVersionFile pick a version (Tab to complete), then a file, to diff
 --                 HEAD's copy of that file against the chosen version's copy
 local M = {}
@@ -259,7 +258,8 @@ function M.diff_against_head(arg)
   open(rev .. "..HEAD")
 end
 
--- Completion for `:CodeReview` — the ordered branch list (see get_branches).
+-- Completion for the branch-taking commands (`:EditDiff`, `:DiffThisFile`,
+-- `:CompareVersionFile`) — the ordered branch list (see get_branches).
 -- Each item is prefixed with a zero-padded index like "(001)" so blink.cmp's
 -- cmdline completion preserves our priority ordering (it sorts candidates
 -- alphabetically, and "(001)" < "(002)" < ... < "(100)"). Three digits keep the
@@ -271,26 +271,6 @@ function M.complete_branches()
     items[i] = string.format("(%03d) %s", i, b)
   end
   return items
-end
-
--- Compare HEAD with a branch.
---
--- The argument is a "(NN) <branch>" completion item (see complete_branches) or
--- a raw branch name, and HEAD is diffed against that branch (branch...HEAD).
-function M.review_code(branch)
-  if branch and branch ~= "" then
-    -- Strip the "(NN) " prefix from a completion item, if present.
-    local name = branch:match("^%(%d+%)%s+(.+)$") or branch:match("^%S+")
-    open(name .. "...HEAD")
-    return
-  end
-
-  local branches = get_branches()
-  if #branches == 0 then
-    notify("No branches found", vim.log.levels.WARN)
-    return
-  end
-  notify("Provide a branch (Tab to complete)", vim.log.levels.WARN)
 end
 
 -- Absolute path of the current repo root, or nil when not in a git repo.
@@ -307,11 +287,12 @@ local EDIT_DIFF_CONFIRM_AT = 20
 local DEFAULT_BASE = "origin/develop"
 
 -- Open every file that differs from a base branch as an editable buffer (as
--- opposed to :CodeReview, which opens the same set in a read-only Diffview).
+-- opposed to the <F1> branch picker, which opens the same set in a read-only
+-- Diffview).
 --
 -- The argument is a "(NN) <branch>" completion item (see complete_branches) or a
 -- raw branch name; with no argument the base is origin/develop. The file set
--- comes from the same three-dot range :CodeReview diffs: files changed on
+-- comes from the same three-dot range <F1> diffs: files changed on
 -- HEAD's side since the merge-base. `--diff-filter=d` drops files deleted on
 -- HEAD, which would only open empty buffers. Files are added with :badd (cheap,
 -- no LSP/Treesitter attach) and only the first is actually opened.
@@ -417,7 +398,7 @@ end
 
 -- Compare a single file's HEAD copy against its copy at a chosen version.
 --
--- Flow mirrors :CodeReview then :CompareFiles — the argument is a "(NN)
+-- Flow mirrors a <F1> branch pick then :CompareFiles — the argument is a "(NN)
 -- <branch>" completion item (see complete_branches) or a raw revision, used as
 -- the version. A Snacks git_files picker (same .kt/.java/.xml scope as
 -- compare_files) then selects one file; on confirm Diffview opens rev..HEAD
@@ -496,7 +477,7 @@ end
 
 -- Diff the focused file against a version, in Diffview.
 --
--- Like :CodeReview narrowed to one file, and like :CompareVersionFile without
+-- Like a <F1> branch pick narrowed to one file, and like :CompareVersionFile without
 -- the file picker: the file is the one already in front of you. The argument is
 -- a "(NN) <branch>" completion item (see complete_branches) or a raw revision;
 -- with no argument the base is origin/develop. Diffview opens rev...HEAD
@@ -555,16 +536,6 @@ function M.setup()
       return M.complete_ancestor_commits()
     end,
     desc = "Diffview: compare HEAD with a previous commit",
-  })
-
-  vim.api.nvim_create_user_command("CodeReview", function(opts)
-    M.review_code(opts.args)
-  end, {
-    nargs = "*",
-    complete = function()
-      return M.complete_branches()
-    end,
-    desc = "Diffview: compare HEAD with a local/remote branch",
   })
 
   vim.api.nvim_create_user_command("EditDiff", function(opts)

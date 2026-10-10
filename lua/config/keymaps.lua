@@ -41,7 +41,7 @@ end
 -- Toggle Diffview: close all diff tabs if one is open, else ask what to diff.
 --
 -- The prompt lists the uncommitted changes first, then HEAD against its parent
--- (`HEAD~..HEAD`), then the same ordered branch list `:CodeReview`/`:EditDiff`
+-- (`HEAD~..HEAD`), then the same ordered branch list `:EditDiff` and friends
 -- complete against (origin/develop first). The first entry opens a bare
 -- `:DiffviewOpen` (working tree vs index+HEAD); the second opens
 -- `HEAD~..HEAD`; a branch opens `branch...HEAD`, i.e. what HEAD added since
@@ -190,9 +190,8 @@ map("n", "<F2>", "<cmd>DiffviewToggleFiles<cr>", { desc = "Toggle Diffview File 
 require("config.ui_select").setup()
 
 -- Register the `:Pdf` (a commit's own changes), `:CompareHead` (HEAD vs a
--- previous commit), `:CodeReview` (HEAD vs local/remote branch, with
--- branch-name completion), `:EditDiff` (open the files that differ from a base
--- branch as buffers, same branch completion, defaults to origin/develop) and
+-- previous commit), `:EditDiff` (open the files that differ from a base branch
+-- as buffers, with branch-name completion, defaults to origin/develop) and
 -- `:DiffThisFile` (diff the focused file against a branch, same completion and
 -- default) commands.
 require("config.git_diff").setup()
