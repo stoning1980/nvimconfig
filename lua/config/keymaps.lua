@@ -3,7 +3,7 @@
 -- Add any additional keymaps here
 --
 -- ┌─ Function key cheatsheet (this file + plugin keys) ──────────────────┐
--- │ F1      : n → toggle Diffview (pick: git status / branch vs HEAD)    │
+-- │ F1      : n → toggle Diffview (status / HEAD~ / branch vs HEAD)      │
 -- │ F2      : n → toggle Diffview file panel                             │
 -- │ S-F1    : n → toggle git annotate panel (per-line author/date)       │
 -- │ S-F2    : n → open current diff's two sides in Beyond Compare        │
@@ -40,10 +40,12 @@ end
 
 -- Toggle Diffview: close all diff tabs if one is open, else ask what to diff.
 --
--- The prompt lists the uncommitted changes first, then the same ordered branch
--- list `:CodeReview`/`:EditDiff` complete against (origin/develop first). The
--- first entry opens a bare `:DiffviewOpen` (working tree vs index+HEAD); a
--- branch opens `branch...HEAD`, i.e. what HEAD added since the merge-base.
+-- The prompt lists the uncommitted changes first, then HEAD against its parent
+-- (`HEAD~..HEAD`), then the same ordered branch list `:CodeReview`/`:EditDiff`
+-- complete against (origin/develop first). The first entry opens a bare
+-- `:DiffviewOpen` (working tree vs index+HEAD); the second opens
+-- `HEAD~..HEAD`; a branch opens `branch...HEAD`, i.e. what HEAD added since
+-- the merge-base.
 --
 -- The last entry re-opens the prompt with every remote branch. That listing is
 -- the one slow query in a big repo (see lua/config/git_diff.lua), so it is kept
@@ -53,11 +55,14 @@ end
 -- (g:dv_from_terminal set by pdf/codereview/dvlc), closing the Diffview should
 -- quit nvim entirely rather than drop into an empty session.
 local WORKING_TREE = "Git status (uncommitted changes)"
+local PREVIOUS_COMMIT = "Compare HEAD with its previous (HEAD~..HEAD)"
 local ALL_REMOTES = "All remote branches (slow in large repos)"
 
 local function open_base(choice)
   if choice == WORKING_TREE then
     vim.cmd("DiffviewOpen")
+  elseif choice == PREVIOUS_COMMIT then
+    vim.cmd("DiffviewOpen HEAD~..HEAD")
   else
     vim.cmd("DiffviewOpen " .. choice .. "...HEAD")
   end
@@ -132,7 +137,7 @@ local function toggle_diffview()
     return
   end
 
-  pick_branch({ title = "Diffview", head = { WORKING_TREE }, tail = { ALL_REMOTES } }, function(choice)
+  pick_branch({ title = "Diffview", head = { WORKING_TREE, PREVIOUS_COMMIT }, tail = { ALL_REMOTES } }, function(choice)
     if choice ~= ALL_REMOTES then
       open_base(choice)
       return
