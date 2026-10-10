@@ -58,6 +58,21 @@ local WORKING_TREE = "Git status (uncommitted changes)"
 local PREVIOUS_COMMIT = "Compare HEAD with its previous (HEAD~..HEAD)"
 local ALL_REMOTES = "All remote branches (slow in large repos)"
 
+local function describe_base(choice)
+  if choice == WORKING_TREE then
+    return "Working tree vs index + HEAD\n\n:DiffviewOpen\n\nEverything not yet committed (staged and unstaged)."
+  elseif choice == PREVIOUS_COMMIT then
+    return "HEAD vs its parent\n\n:DiffviewOpen HEAD~..HEAD\n\nThe changes made by the last commit."
+  elseif choice == ALL_REMOTES then
+    return "List every remote branch\n\nRe-opens this picker with all remote branches.\nSlow in large repos."
+  end
+  return ("%s vs HEAD\n\n:DiffviewOpen %s...HEAD\n\nWhat HEAD added since its merge-base with %s."):format(
+    choice,
+    choice,
+    choice
+  )
+end
+
 local function open_base(choice)
   if choice == WORKING_TREE then
     vim.cmd("DiffviewOpen")
@@ -78,13 +93,14 @@ local function pick_branch(opts, on_choice)
   local idx = 0
   local function item(name)
     idx = idx + 1
-    return { text = idx .. " " .. name, item = name, idx = idx }
+    return { text = idx .. " " .. name, item = name, idx = idx, preview = { text = describe_base(name), loc = false } }
   end
 
   Snacks.picker.pick({
     source = "select",
     title = opts.title,
     format = Snacks.picker.format.ui_select({}),
+    preview = "preview",
     layout = {
       config = function(layout)
         for _, box in ipairs(layout.layout) do
