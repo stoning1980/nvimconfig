@@ -26,6 +26,7 @@
 -- │ Commands without a key: :DiffviewCycleLayout (side-by-side ↔ stacked)│
 -- │                         :GitGrep (grep git-tracked files only)       │
 -- │                         :DiffviewToggleFiles (Diffview file panel)   │
+-- │                         :DiffviewShowFile (this buffer in Diffview)  │
 -- └─────────────────────────────────────────────────────────────────────┘
 
 local map = vim.keymap.set
@@ -228,6 +229,10 @@ require("config.ui_select").setup()
 -- `:DiffThisFile` (diff the focused file against a branch, same completion and
 -- default) commands.
 require("config.git_diff").setup()
+
+-- Make buffer switches (e.g. `,,`) inside a Diffview tab select that file in
+-- the Diffview instead of breaking it, and register `:DiffviewShowFile`.
+require("config.diffview_follow").setup()
 
 -- Register the `:Goto` project switcher (recents + autojump.txt list).
 require("config.goto").setup()
