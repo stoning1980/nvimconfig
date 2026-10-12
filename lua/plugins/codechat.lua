@@ -1,9 +1,9 @@
--- codechat.nvim: drive CLI coding agents (Claude, Cursor) in Neovim terminals.
+-- codechat.nvim: drive CLI coding agents (Claude, Cursor, Trae, Codex) in Neovim terminals.
 -- Runs the agent's interactive TUI in a terminal and injects the current
 -- file/selection + an optional typed comment into its input box.
 --   <F9>  -> send to the active agent (normal: whole file, visual: selection).
 --           On first use it pops a picker (ttadk Claude / ttadk Cursor /
---           Claude / Cursor / Relay) and remembers the choice across restarts. Change
+--           Claude / Cursor / Relay / Trae / Codex) and remembers the choice across restarts. Change
 --           it later with :CodeChatPick.
 -- Requires the respective CLI installed (and logged in once).
 return {
@@ -35,12 +35,14 @@ return {
     -- `login = true` runs the pipeline via an interactive login shell that
     -- sources your rc files. Set `login_shell` if your shell isn't vim.o.shell.
     --
-    -- Five candidates are offered in the picker (in `order`):
+    -- Seven candidates are offered in the picker (in `order`):
     --   1. ttadk Claude  -- Claude via the `ttadk` wrapper
     --   2. ttadk Cursor  -- Cursor CLI via the `ttadk` wrapper
     --   3. Claude        -- the plain `claude` binary (from config.lua defaults)
     --   4. Cursor        -- the plain `cursor-agent` binary (from defaults)
     --   5. Relay         -- the plain `relay` binary (launched directly in bash)
+    --   6. Trae          -- the plain `trae-cli` binary
+    --   7. Codex         -- the plain `codex` binary
     -- ── Agent parameter reference ─────────────────────────────────────
     -- label          : display name shown in the :CodeChatPick picker.
     -- command        : how to launch the agent. Accepts three forms:
@@ -95,6 +97,18 @@ return {
         label = "Relay",
         order = 5,
         command = "relay",
+      },
+      trae = {
+        label = "Trae",
+        order = 6,
+        command = vim.fn.expand("~/.local/bin/trae-cli"),
+        fallbacks = { "trae-cli", "traecli" },
+      },
+      codex = {
+        label = "Codex",
+        order = 7,
+        command = vim.fn.expand("~/.local/bin/codex"),
+        fallbacks = { "codex" },
       },
     },
   },
