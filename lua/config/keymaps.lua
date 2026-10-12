@@ -11,7 +11,7 @@
 -- │ S-F3    : n → next file entry (Diffview only)                        │
 -- │ F4      : n → resume last Snacks picker search                       │
 -- │ F5      : all modes → jump back (jumplist <C-o>)                     │
--- │ F6      : all modes → jump forward (jumplist <C-i>)                  │
+-- │ F6      : n → :GitGrep (git-tracked files) | v → grep the selection  │
 -- │ F7      : n → grep open buffers  |  v → grep selection in buffers    │
 -- │ F8      : v → send selection | n → send buffered files (claudeide)   │
 -- │ S-F8    : n → start Claude IDE server (auto_start off)               │
@@ -24,7 +24,6 @@
 -- │ S-F12   : n → AdbHelper action menu (A/B debug/relaunch/kill/clear)  │
 -- │ Note: terminals emit S-Fn as F(n+12): S-F1=F13 S-F12=F24 …           │
 -- │ Commands without a key: :DiffviewCycleLayout (side-by-side ↔ stacked)│
--- │                         :GitGrep (grep git-tracked files only)       │
 -- │                         :DiffviewToggleFiles (Diffview file panel)   │
 -- │                         :DiffviewShowFile (this buffer in Diffview)  │
 -- └─────────────────────────────────────────────────────────────────────┘
@@ -315,11 +314,11 @@ end
 map("n", "<S-F3>", next_diff_file, { desc = "Next File (Diffview)" })
 map("n", "<F15>", next_diff_file, { desc = "Next File (Diffview)" })
 
--- F5 / F6: navigate the jumplist backward / forward, like an IDE's back/forward
--- buttons. <C-o> / <C-i> are normal-mode motions, so from any other mode we first
+-- F5: jump back in the jumplist, like an IDE's back button (jump forward is
+-- plain <C-i>). <C-o> is a normal-mode motion, so from any other mode we first
 -- drop to normal with <C-\><C-N> (works from insert, visual, and terminal) and
--- then perform the jump. Feeding the keys with noremap ("n") keeps <C-i> as the
--- jumplist motion rather than an <expr>/remapped Tab.
+-- then perform the jump. Feeding the keys with noremap ("n") keeps the motion
+-- from being remapped.
 local function jumplist(motion)
   return function()
     local keys = vim.api.nvim_replace_termcodes("<C-\\><C-N>" .. motion, true, false, true)
@@ -328,7 +327,19 @@ local function jumplist(motion)
 end
 
 map({ "n", "i", "v", "x", "s", "t" }, "<F5>", jumplist("<C-o>"), { desc = "Jump back" })
-map({ "n", "i", "v", "x", "s", "t" }, "<F6>", jumplist("<C-i>"), { desc = "Jump forward" })
+
+-- F6: :GitGrep — live grep over git-tracked files. Normal → empty prompt;
+-- visual → seeded with the selection (first line, matched literally).
+map("n", "<F6>", function()
+  require("config.git_grep").open()
+end, { desc = "Git Grep" })
+
+map("x", "<F6>", function()
+  -- Same capture as the visual <F7> below: getregion, then a synchronous <Esc>.
+  local region = vim.fn.getregion(vim.fn.getpos("v"), vim.fn.getpos("."), { type = vim.fn.mode() })
+  vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "nx", false)
+  require("config.git_grep").open({ search = region[1] or "" })
+end, { desc = "Git Grep selection" })
 
 -- Path-copy helpers -----------------------------------------------------------
 
@@ -401,7 +412,7 @@ map("n", "<F13>", toggle_git_annotate, { desc = "Toggle Git Annotate Panel" })
 -- need_search = true overrides the grep_buffers default (false), which would
 -- otherwise grep every line of every buffer with an empty pattern and keep
 -- re-ranking that streaming list — that churn resets the selection so <c-n>/
--- <c-p> can't move it. Requiring a term yields a stable list like F6.
+-- <c-p> can't move it. Requiring a term yields a stable list like F6 (:GitGrep).
 map("n", "<F7>", function()
   Snacks.picker.grep_buffers({ need_search = true })
 end, { desc = "Grep Open Buffers" })

@@ -201,6 +201,11 @@ function M.open(opts)
     live = true,
     supports_live = true,
     show_empty = true,
+    -- Keep git's order (grouped by file) when filtering the results with <c-g>.
+    -- Score-sorting inserts each better match above the cursor while git is
+    -- still streaming, so the row under the cursor keeps changing and <c-n>/
+    -- <c-p> seem to go nowhere; unsorted results only ever append below.
+    matcher = { sort = false },
     cwd = root,
     regex = false,
     untracked = false,
