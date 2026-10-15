@@ -11,7 +11,7 @@
 -- │ S-F3    : n → next file entry (Diffview only)                        │
 -- │ F4      : n → resume last Snacks picker search                       │
 -- │ F5      : all modes → jump back (jumplist <C-o>)                     │
--- │ F6      : n → :GitGrep (git-tracked files) | v → grep the selection  │
+-- │ F6      : n/i/t/c → :GitGrep (git-tracked) | v/s → grep selection    │
 -- │ F7      : n → grep open buffers  |  v → grep selection in buffers    │
 -- │ F8      : v → send selection | n → send buffered files (claudeide)   │
 -- │ S-F8    : n → start Claude IDE server (auto_start off)               │
@@ -328,15 +328,26 @@ end
 
 map({ "n", "i", "v", "x", "s", "t" }, "<F5>", jumplist("<C-o>"), { desc = "Jump back" })
 
--- F6: :GitGrep — live grep over git-tracked files. Normal → empty prompt;
--- visual → seeded with the selection (first line, matched literally).
+-- F6: :GitGrep — live grep over git-tracked files. Normal/insert/terminal/
+-- cmdline → empty prompt; visual/select → seeded with the selection (first
+-- line, matched literally).
 map("n", "<F6>", function()
   require("config.git_grep").open()
 end, { desc = "Git Grep" })
 
-map("x", "<F6>", function()
+map({ "i", "t", "c" }, "<F6>", function()
+  -- Leave insert/terminal/cmdline first; scheduled so the cmdline has closed.
+  vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<C-\\><C-N>", true, false, true), "n", false)
+  vim.schedule(function()
+    require("config.git_grep").open()
+  end)
+end, { desc = "Git Grep" })
+
+local select_to_visual = { s = "v", S = "V", ["\19"] = "\22" }
+map({ "x", "s" }, "<F6>", function()
   -- Same capture as the visual <F7> below: getregion, then a synchronous <Esc>.
-  local region = vim.fn.getregion(vim.fn.getpos("v"), vim.fn.getpos("."), { type = vim.fn.mode() })
+  local mode = vim.fn.mode()
+  local region = vim.fn.getregion(vim.fn.getpos("v"), vim.fn.getpos("."), { type = select_to_visual[mode] or mode })
   vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "nx", false)
   require("config.git_grep").open({ search = region[1] or "" })
 end, { desc = "Git Grep selection" })
