@@ -62,6 +62,17 @@ local REMOTES_ARGS = {
   "refs/remotes/",
 }
 
+-- The 20 commits after HEAD, for the F1/F2 picker. skip=1 drops HEAD itself
+-- (already shown as "HEAD~ .. HEAD" in the picker).
+local RECENT_COMMITS_ARGS = {
+  "git",
+  "log",
+  "--skip=1",
+  "--max-count=20",
+  "--format=%h %s",
+  "HEAD",
+}
+
 local function filter_remotes(lines)
   local remotes = {}
   for _, r in ipairs(lines or {}) do
@@ -136,6 +147,26 @@ end
 
 M.get_branches = get_branches
 
+-- Run a git command asynchronously. The callback receives the trimmed output
+-- lines (nil on failure) in a vim.schedule context.
+local function git_async(args, done)
+  vim.system(args, { text = true }, function(res)
+    local lines = nil
+    if res.code == 0 then
+      lines = {}
+      for _, line in ipairs(vim.split(res.stdout or "", "\n")) do
+        line = vim.trim(line)
+        if line ~= "" then
+          table.insert(lines, line)
+        end
+      end
+    end
+    vim.schedule(function()
+      done(lines)
+    end)
+  end)
+end
+
 -- List branches without blocking, handing the same ordered list to `cb`.
 --
 -- Prefer this wherever a callback will do. Even though the queries themselves
@@ -167,31 +198,38 @@ function M.get_branches_async(opts, cb)
     end
   end
 
-  local function run(args, done)
-    vim.system(args, { text = true }, function(res)
-      local lines = nil
-      if res.code == 0 then
-        lines = {}
-        for _, line in ipairs(vim.split(res.stdout or "", "\n")) do
-          line = vim.trim(line)
-          if line ~= "" then
-            table.insert(lines, line)
-          end
+  git_async(LOCALS_ARGS, collect("locals"))
+  git_async(PRIORITY_ARGS, collect("priority"))
+  if want_remotes then
+    git_async(REMOTES_ARGS, collect("remotes"))
+  end
+end
+
+-- Priority remotes that exist plus 20 recent commits, for the F1/F2 picker.
+-- Both queries run concurrently; `cb(remotes, commits)` fires on completion.
+---@param cb fun(remotes: string[], commits: string[])
+function M.get_picker_bases_async(cb)
+  local results = {}
+  local pending = 2
+  local function collect(key)
+    return function(out)
+      results[key] = out
+      pending = pending - 1
+      if pending > 0 then
+        return
+      end
+      local priority_set = as_set(results.priority)
+      local remotes = {}
+      for _, p in ipairs(PRIORITY_REMOTES) do
+        if priority_set[p] then
+          table.insert(remotes, p)
         end
       end
-      -- vim.system calls back in a fast event context, where most of the API
-      -- (and our notify) is off limits.
-      vim.schedule(function()
-        done(lines)
-      end)
-    end)
+      cb(remotes, results.commits or {})
+    end
   end
-
-  run(LOCALS_ARGS, collect("locals"))
-  run(PRIORITY_ARGS, collect("priority"))
-  if want_remotes then
-    run(REMOTES_ARGS, collect("remotes"))
-  end
+  git_async(PRIORITY_ARGS, collect("priority"))
+  git_async(RECENT_COMMITS_ARGS, collect("commits"))
 end
 
 local function open(rev)

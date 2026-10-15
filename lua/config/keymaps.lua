@@ -3,7 +3,7 @@
 -- Add any additional keymaps here
 --
 -- ┌─ Function key cheatsheet (this file + plugin keys) ──────────────────┐
--- │ F1      : n → toggle Diffview (status / HEAD~ / branch vs HEAD)      │
+-- │ F1      : n → toggle Diffview (status / commit / remote vs HEAD)     │
 -- │ F2      : n → open files changed vs a picked base (same menu as F1)  │
 -- │ S-F1    : n → toggle git annotate panel (per-line author/date)       │
 -- │ S-F2    : n → open current diff's two sides in Beyond Compare        │
@@ -57,7 +57,8 @@ end
 -- quit nvim entirely rather than drop into an empty session.
 local WORKING_TREE = "Git status (uncommitted changes)"
 local PREVIOUS_COMMIT = "Compare HEAD with its previous (HEAD~..HEAD)"
-local ALL_REMOTES = "All remote branches (slow in large repos)"
+-- Matches a commit item from the picker: short hex SHA followed by a space.
+local COMMIT_PAT = "^(%x%x%x%x+)%s"
 
 -- The git range a picker choice stands for; nil means the uncommitted changes.
 local function base_range(choice)
@@ -66,15 +67,16 @@ local function base_range(choice)
   elseif choice == PREVIOUS_COMMIT then
     return "HEAD~..HEAD"
   end
+  local sha = choice:match(COMMIT_PAT)
+  if sha then
+    return sha .. "^.." .. sha
+  end
   return choice .. "...HEAD"
 end
 
 -- Preview text for a picker choice. `edit` describes <F2> (open the changed
 -- files as buffers) rather than <F1> (open a Diffview).
 local function describe_base(choice, edit)
-  if choice == ALL_REMOTES then
-    return "List every remote branch\n\nRe-opens this picker with all remote branches.\nSlow in large repos."
-  end
   local title, scope
   if choice == WORKING_TREE then
     title = "Working tree vs index + HEAD"
@@ -83,7 +85,13 @@ local function describe_base(choice, edit)
   elseif choice == PREVIOUS_COMMIT then
     title, scope = "HEAD vs its parent", "The changes made by the last commit."
   else
-    title, scope = choice .. " vs HEAD", "What HEAD added since its merge-base with " .. choice .. "."
+    local sha = choice:match(COMMIT_PAT)
+    if sha then
+      title = sha
+      scope = choice:sub(#sha + 2) .. "\n\nThe changes introduced by this single commit."
+    else
+      title, scope = choice .. " vs HEAD", "What HEAD added since its merge-base with " .. choice .. "."
+    end
   end
   if edit then
     return ("%s\n\nOpens every changed file as a buffer (deleted files are skipped).\n\n%s"):format(title, scope)
@@ -97,13 +105,11 @@ local function open_base(choice)
   vim.cmd("DiffviewOpen" .. (range and (" " .. range) or ""))
 end
 
--- Open the branch picker at once and fill it in as git answers. The picker
--- holds focus from the keypress on, so nothing typed while git is still
--- listing can land in the buffer underneath; Snacks shows its busy spinner
--- until the finder returns. `head`/`tail` entries frame the git results.
----@param opts { title: string, edit?: boolean, all_remotes?: boolean, head?: string[], tail?: string[] }
----@param on_choice fun(choice: string)
-local function pick_branch(opts, on_choice)
+-- The <F1>/<F2> base picker: uncommitted changes, HEAD~..HEAD, priority
+-- remotes (origin/develop etc.), then 20 recent commits.
+---@param opts { title: string, edit?: boolean }
+---@param on_base fun(choice: string)
+local function pick_base(opts, on_base)
   local idx = 0
   local function item(name)
     idx = idx + 1
@@ -127,23 +133,19 @@ local function pick_branch(opts, on_choice)
     },
     finder = function(_, ctx)
       return function(cb)
-        for _, name in ipairs(opts.head or {}) do
-          cb(item(name))
-        end
-        local list
-        require("config.git_diff").get_branches_async({ all_remotes = opts.all_remotes }, function(res)
-          list = res
+        cb(item(WORKING_TREE))
+        cb(item(PREVIOUS_COMMIT))
+        local remotes, commits
+        require("config.git_diff").get_picker_bases_async(function(r, c)
+          remotes, commits = r, c
           ctx.async:resume()
         end)
         ctx.async:suspend()
-        if not list then
-          return
-        end
-        for _, name in ipairs(list) do
+        for _, name in ipairs(remotes or {}) do
           cb(item(name))
         end
-        for _, name in ipairs(opts.tail or {}) do
-          cb(item(name))
+        for _, line in ipairs(commits or {}) do
+          cb(item(line))
         end
       end
     end,
@@ -151,27 +153,11 @@ local function pick_branch(opts, on_choice)
       picker:close()
       if it then
         vim.schedule(function()
-          on_choice(it.item)
+          on_base(it.item)
         end)
       end
     end,
   })
-end
-
--- The <F1>/<F2> base picker: uncommitted changes, HEAD~..HEAD, the branch list,
--- and a last entry that re-opens it with every remote branch.
----@param opts { title: string, edit?: boolean }
----@param on_base fun(choice: string)
-local function pick_base(opts, on_base)
-  local first =
-    { title = opts.title, edit = opts.edit, head = { WORKING_TREE, PREVIOUS_COMMIT }, tail = { ALL_REMOTES } }
-  pick_branch(first, function(choice)
-    if choice ~= ALL_REMOTES then
-      on_base(choice)
-      return
-    end
-    pick_branch({ title = opts.title .. " (all remote branches)", edit = opts.edit, all_remotes = true }, on_base)
-  end)
 end
 
 local function toggle_diffview()
