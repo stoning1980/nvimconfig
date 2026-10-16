@@ -5,10 +5,11 @@
 -- ┌─ Function key cheatsheet (this file + plugin keys) ──────────────────┐
 -- │ F1      : n → toggle Diffview (status / commit / remote vs HEAD)     │
 -- │ F2      : n → open files changed vs a picked base (same menu as F1)  │
--- │ S-F1    : n → toggle git annotate panel (per-line author/date)       │
+-- │ S-F1    : n → toggle Diffview file panel (:DiffviewToggleFiles)      │
 -- │ S-F2    : n → open current diff's two sides in Beyond Compare        │
 -- │ F3      : n → next diff hunk (Diffview only; error else)             │
 -- │ S-F3    : n → next file entry (Diffview only)                        │
+-- │ S-F4    : n → toggle git annotate panel (per-line author/date)       │
 -- │ F4      : n → resume last Snacks picker search                       │
 -- │ F5      : all modes → jump back (jumplist <C-o>)                     │
 -- │ F6      : n/i/t/c → :GitGrep (git-tracked) | v/s → grep selection    │
@@ -24,7 +25,6 @@
 -- │ S-F12   : n → AdbHelper action menu (A/B debug/relaunch/kill/clear)  │
 -- │ Note: terminals emit S-Fn as F(n+12): S-F1=F13 S-F12=F24 …           │
 -- │ Commands without a key: :DiffviewCycleLayout (side-by-side ↔ stacked)│
--- │                         :DiffviewToggleFiles (Diffview file panel)   │
 -- │                         :DiffviewShowFile (this buffer in Diffview)  │
 -- └─────────────────────────────────────────────────────────────────────┘
 
@@ -393,15 +393,19 @@ end
 vim.keymap.set("n", "<S-F10>", clear_marks, { desc = "Clear all marks" })
 vim.keymap.set("n", "<F22>", clear_marks, { desc = "Clear all marks" })
 
--- Shift+F1: toggle an Android Studio / JetBrains style "Annotate" panel — a
+-- Shift+F4: toggle an Android Studio / JetBrains style "Annotate" panel — a
 -- scroll-bound left split showing author + date for every line. Press q inside
--- the panel (or Shift+F1 again) to close it. Terminals emit shifted F1 as <F13>,
+-- the panel (or Shift+F4 again) to close it. Terminals emit shifted F4 as <F16>,
 -- so map both spellings.
 local function toggle_git_annotate()
   require("config.git_annotate").toggle()
 end
-map("n", "<S-F1>", toggle_git_annotate, { desc = "Toggle Git Annotate Panel" })
-map("n", "<F13>", toggle_git_annotate, { desc = "Toggle Git Annotate Panel" })
+map("n", "<S-F4>", toggle_git_annotate, { desc = "Toggle Git Annotate Panel" })
+map("n", "<F16>", toggle_git_annotate, { desc = "Toggle Git Annotate Panel" })
+
+-- Shift+F1: toggle Diffview's file panel. Terminals emit shifted F1 as <F13>.
+map("n", "<S-F1>", "<cmd>DiffviewToggleFiles<cr>", { desc = "Toggle Diffview File Panel" })
+map("n", "<F13>", "<cmd>DiffviewToggleFiles<cr>", { desc = "Toggle Diffview File Panel" })
 
 -- F7: grep across open buffers (like F6, but scoped to loaded buffers instead
 -- of git-tracked files). Normal → prompt for the search string; visual → grep
