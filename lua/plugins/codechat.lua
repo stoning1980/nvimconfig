@@ -1,10 +1,11 @@
 -- codechat.nvim: drive CLI coding agents (Claude, Cursor, Trae, Codex) in Neovim terminals.
 -- Runs the agent's interactive TUI in a terminal and injects the current
 -- file/selection + an optional typed comment into its input box.
---   <F9>  -> send to the active agent (normal: whole file, visual: selection).
---           On first use it pops a picker (ttadk Claude / ttadk Cursor /
---           Claude / Cursor / Relay / Trae / Codex) and remembers the choice across restarts. Change
---           it later with :CodeChatPick.
+--   <F9>   -> send to the active agent (normal: whole file, visual: selection).
+--            On first use it pops a picker (ttadk Claude / ttadk Cursor /
+--            Claude / Cursor / Relay / Trae / Codex) and remembers the choice across restarts. Change
+--            it later with :CodeChatPick.
+--   <S-F9> -> close the CodeChat window, terminal, and session (:CodeChatStop).
 -- Requires the respective CLI installed (and logged in once).
 return {
   dir = vim.fn.stdpath("config") .. "/dev/codechat.nvim",
@@ -22,6 +23,21 @@ return {
     -- The one shortcut: send to the remembered agent (picker on first use).
     { "<F9>", "<cmd>CodeChatSendFile<cr>", mode = "n", desc = "Send current file to AI agent" },
     { "<F9>", ":<C-u>CodeChatSend<cr>", mode = "v", desc = "Send selection to AI agent" },
+    -- Shift+F9 closes the agent window and kills its terminal session.
+    -- Terminals emit shifted F9 as <F21>, so map both spellings. Terminal mode
+    -- is included so the key works while the agent window itself is focused.
+    {
+      "<S-F9>",
+      "<cmd>CodeChatStop<cr>",
+      mode = { "n", "v", "t" },
+      desc = "Close CodeChat window, terminal, and session",
+    },
+    {
+      "<F21>",
+      "<cmd>CodeChatStop<cr>",
+      mode = { "n", "v", "t" },
+      desc = "Close CodeChat window, terminal, and session",
+    },
     -- Helpers: focus the agent terminal (to answer prompts) / switch agent.
     { "<leader>ac", "<cmd>CodeChat<cr>", desc = "Focus/toggle AI agent terminal" },
     { "<leader>ap", "<cmd>CodeChatPick<cr>", desc = "Pick AI agent for <F9>" },

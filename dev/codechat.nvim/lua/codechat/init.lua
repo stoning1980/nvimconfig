@@ -360,10 +360,14 @@ local function create_commands()
       util.info("no agent terminal running")
       return
     end
+    -- Leave terminal-insert before the window goes away, so focus returns to
+    -- the code window in normal mode.
+    vim.cmd("stopinsert")
     for _, name in ipairs(alive) do
       M.stop(name)
     end
-  end, { desc = "Stop any running AI agent terminals" })
+    M.active = nil
+  end, { desc = "Close the CodeChat window, terminal, and session" })
 end
 
 ---@param opts table|nil

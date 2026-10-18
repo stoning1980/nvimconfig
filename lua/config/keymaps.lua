@@ -17,6 +17,7 @@
 -- │ F8      : v → send selection | n → send buffered files (claudeide)   │
 -- │ S-F8    : n → start Claude IDE server (auto_start off)               │
 -- │ F9      : n → send file / v → send selection to AI agent (codechat)  │
+-- │ S-F9    : n/v/t → close CodeChat window, terminal, and session       │
 -- │ F10     : n → mark word / v → mark selection (interestingwords)      │
 -- │ S-F10   : n → clear all interestingwords marks                       │
 -- │ F11     : n → copy repo-rel path | v → repo-rel path + line range    │
