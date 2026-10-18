@@ -1,0 +1,24 @@
+---
+description: Update the Lark key reference when commands or shortcuts change
+alwaysApply: true
+---
+
+# Lark key reference
+
+When a change adds, modifies, or deletes a user command, or changes a shortcut (F1–F12, Shift+F1–Shift+F12, or a leader key listed in the doc), update this document in the same change:
+
+https://bytedance.us.larkoffice.com/docx/PHdrdKPxooOAo7xBwALuzalzseb
+
+Commands live in `lua/config/`, `lua/plugins/`, and `dev/`. The function-key cheatsheet at the top of `lua/config/keymaps.lua` is the local source of truth for F-keys.
+
+## What to update
+
+- **Key reference** table: the F-key cell and its Shift+F cell. An unbound Shift key stays `Not mapped.`
+- **Commands** table in the matching section (Git and diff, Search and navigation, AI agents, Android): arguments, what it does, and the Key column. Use `—` when the command has no key.
+- A deleted command or shortcut is removed from both places. Do not leave a stale key or a row for a command that no longer exists.
+
+## How
+
+- Edit with `lark-cli docs` as the user (`--as user`). Follow the lark-doc skill. Use `str_replace` or `block_replace` on the affected cells only. Do not overwrite the document.
+- Match the existing voice: mode in italics, then an em dash, then what the key does. Example: `*Normal / Visual / Terminal* — Close the CodeChat window, terminal, and session.`
+- Fetch the changed rows with a keyword search and confirm they match the code before finishing.
