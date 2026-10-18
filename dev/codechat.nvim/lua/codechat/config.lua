@@ -71,6 +71,7 @@ M.defaults = {
   --              shell lines / argv lists / setup pipelines / custom wrappers.
   -- `order`    : optional number controlling position in the agent picker (lower
   --              comes first). Agents without it sort after, alphabetically by label.
+  -- Launch built-in agents with full access and no interactive permission checks.
   agents = {
     claude = {
       label = "Claude",
@@ -78,7 +79,7 @@ M.defaults = {
       setup = nil,
       login = false,
       login_shell = nil,
-      args = {},
+      args = { "--dangerously-skip-permissions" },
       shell = false,
       env = nil,
       fallbacks = { "claude" },
@@ -90,7 +91,7 @@ M.defaults = {
       setup = nil,
       login = false,
       login_shell = nil,
-      args = {},
+      args = { "--force", "--sandbox", "disabled", "--approve-mcps", "--trust" },
       shell = false,
       env = nil,
       fallbacks = { "cursor-agent", "agent" },

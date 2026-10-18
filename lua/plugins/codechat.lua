@@ -51,6 +51,8 @@ return {
     -- `login = true` runs the pipeline via an interactive login shell that
     -- sources your rc files. Set `login_shell` if your shell isn't vim.o.shell.
     --
+    -- All agents launch with full access and skip interactive permission checks.
+    -- Claude and Cursor inherit their permission flags from config.lua defaults.
     -- Seven candidates are offered in the picker (in `order`):
     --   1. ttadk Claude  -- Claude via the `ttadk` wrapper
     --   2. ttadk Cursor  -- Cursor CLI via the `ttadk` wrapper
@@ -94,13 +96,14 @@ return {
         login = true,
         setup = { "nvm use 22" },
         command = { "ttadk", "code", "-t", "cursor-cli" },
+        args = { "-a", "--force --sandbox disabled --approve-mcps --trust" },
       },
       claude = {
         label = "Claude",
         order = 3,
         login = true,
         setup = { "nvm use 22" },
-        command = "cl --dangerously-skip-permissions",
+        command = "cl",
         fallbacks = { "claude" },
       },
       cursor = {
@@ -113,17 +116,20 @@ return {
         label = "Relay",
         order = 5,
         command = "relay",
+        args = { "--dangerously-skip-permissions" },
       },
       trae = {
         label = "Trae",
         order = 6,
         command = vim.fn.expand("~/.local/bin/trae-cli"),
+        args = { "--dangerously-bypass-approvals-and-sandbox" },
         fallbacks = { "trae-cli", "traecli" },
       },
       codex = {
         label = "Codex",
         order = 7,
         command = vim.fn.expand("~/.local/bin/codex"),
+        args = { "--dangerously-bypass-approvals-and-sandbox" },
         fallbacks = { "codex" },
       },
     },
