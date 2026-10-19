@@ -2,6 +2,8 @@
 -- <F1> Git status must drop coding-agent directories from the Diffview file
 -- list. They must not be passed as path args: Diffview treats those as the
 -- diff scope, prints them under "Showing changes for", and then shows nothing.
+-- <F2> / :EditDiff (edit_changed) must drop the same directories from every
+-- file list it opens as buffers, including a commit range.
 vim.opt.rtp:prepend(vim.fn.getcwd())
 vim.opt.rtp:append(vim.fn.stdpath("data") .. "/lazy/diffview.nvim")
 require("diffview").setup({
@@ -74,9 +76,51 @@ write(root .. "/src/real.kt", "chg")
 write(root .. "/.cursor/nested/deep.txt", "chg")
 write(root .. "/src/.claude/c.txt", "chg")
 write(root .. "/.agency/keep.txt", "chg")
+git(root, "add", "-A")
+git(root, "-c", "user.email=t@example.com", "-c", "user.name=test", "commit", "-q", "-m", "chg")
+write(root .. "/src/real.kt", "wt")
+write(root .. "/.cursor/nested/deep.txt", "wt")
+write(root .. "/src/.claude/c.txt", "wt")
+write(root .. "/.agency/keep.txt", "wt")
+write(root .. "/src/new.kt", "new")
+write(root .. "/.cursor/untracked.txt", "new")
+
+local function buffer_rels()
+  local rels = {}
+  -- git resolves /var → /private/var on macOS; buffer names use that path.
+  local toplevel = vim.trim(vim.fn.system({ "git", "rev-parse", "--show-toplevel" }))
+  local prefix = toplevel .. "/"
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.fn.buflisted(buf) == 1 then
+      local name = vim.api.nvim_buf_get_name(buf)
+      if name:sub(1, #prefix) == prefix then
+        rels[#rels + 1] = name:sub(#prefix + 1)
+      end
+    end
+  end
+  table.sort(rels)
+  return table.concat(rels, "\n")
+end
+
+local function wipe_buffers()
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_valid(buf) and vim.fn.buflisted(buf) == 1 then
+      vim.cmd("bwipeout! " .. buf)
+    end
+  end
+end
 
 local prev = vim.fn.getcwd()
 vim.cmd.cd(root .. "/src")
+
+git_diff.edit_changed("HEAD~..HEAD")
+assert_eq(buffer_rels(), ".agency/keep.txt\nsrc/real.kt", "F2 commit range")
+wipe_buffers()
+
+git_diff.edit_changed(nil)
+assert_eq(buffer_rels(), ".agency/keep.txt\nsrc/new.kt\nsrc/real.kt", "F2 working tree")
+wipe_buffers()
+
 git_diff.arm_ai_tool_filter()
 require("diffview").open()
 
@@ -100,7 +144,7 @@ for _, entry in ipairs(view.files.staged) do
   paths[#paths + 1] = entry.path
 end
 table.sort(paths)
-assert_eq(table.concat(paths, "\n"), ".agency/keep.txt\nsrc/real.kt", "file list")
+assert_eq(table.concat(paths, "\n"), ".agency/keep.txt\nsrc/new.kt\nsrc/real.kt", "file list")
 
 vim.cmd.cd(prev)
 print("PASS: F1 Git status Diffview skips AI tool directories")

@@ -81,10 +81,10 @@ local function describe_base(choice, edit)
   local title, scope
   if choice == WORKING_TREE then
     title = "Working tree vs index + HEAD"
+    local dirs = table.concat(require("config.git_diff").ai_tool_dirs, ", ")
     if edit then
-      scope = "Everything not yet committed (staged, unstaged and untracked)."
+      scope = "Staged, unstaged, and untracked files, leaving out AI tool directories (" .. dirs .. ")."
     else
-      local dirs = table.concat(require("config.git_diff").ai_tool_dirs, ", ")
       scope = "Staged and unstaged changes, leaving out AI tool directories (" .. dirs .. ")."
     end
   elseif choice == PREVIOUS_COMMIT then
@@ -99,7 +99,8 @@ local function describe_base(choice, edit)
     end
   end
   if edit then
-    return ("%s\n\nOpens every changed file as a buffer (deleted files are skipped).\n\n%s"):format(title, scope)
+    local body = "Opens every changed file as a buffer. Deleted files and AI tool directories are skipped."
+    return ("%s\n\n%s\n\n%s"):format(title, body, scope)
   end
   local range = base_range(choice)
   return ("%s\n\n:DiffviewOpen%s\n\n%s"):format(title, range and (" " .. range) or "", scope)
@@ -188,7 +189,8 @@ local function toggle_diffview()
 end
 
 -- Like <F1>, but instead of a Diffview it opens every file that differs from
--- the chosen base as a regular, editable buffer.
+-- the chosen base as a regular, editable buffer. AI tool directories are
+-- skipped for every base, using the same path check as the Git status Diffview.
 local function edit_changed_files()
   pick_base({ title = "Open changed files", edit = true }, function(choice)
     require("config.git_diff").edit_changed(base_range(choice))

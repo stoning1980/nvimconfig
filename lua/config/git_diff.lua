@@ -3,7 +3,7 @@
 --   :CompareHead  compare HEAD with a previous commit (Tab: last 20 ancestors)
 --   :EditDiff     open every file differing from a base branch as a buffer
 --                 (Tab: ordered branches, defaults to origin/develop;
---                 confirms past 20 files)
+--                 confirms past 20 files; skips AI tool directories)
 --   :CompareFiles diff two repo files picked from a fuzzy list (Tab to select two)
 --   :DiffThisFile diff the focused file against a version (same branch list as
 --                 :EditDiff, defaults to origin/develop)
@@ -317,12 +317,17 @@ local function repo_root()
   return out and out[1] or nil
 end
 
--- Dot-directories owned by coding agents. <F1>'s "Git status" Diffview skips
--- these anywhere in the tree; they are tool state, not changes to review.
+-- Dot-directories owned by coding agents. They are tool state, not changes
+-- to review, and a match is any path segment (`.agent` does not match
+-- `.agency`), at the repo root or nested.
 --
--- This is applied to the file list after Git returns it. Passing the same
--- paths as Diffview path args makes them the diff scope: the panel says
--- "Showing changes for" those globs and the real changes disappear.
+-- <F1> drops them from the "Git status" Diffview file list after Git returns
+-- it. Passing the same paths as Diffview path args makes them the diff scope:
+-- the panel says "Showing changes for" those globs and the real changes
+-- disappear. A commit or branch Diffview still shows a change that landed
+-- inside one of these directories.
+--
+-- <F2> and :EditDiff drop them from every list of files they open as buffers.
 M.ai_tool_dirs = {
   ".agent",
   ".agents",
@@ -369,6 +374,16 @@ local function without_ai_tool_files(entries)
   for _, entry in ipairs(entries) do
     if not M.is_ai_tool_path(entry.path) then
       kept[#kept + 1] = entry
+    end
+  end
+  return kept
+end
+
+local function without_ai_tool_paths(paths)
+  local kept = {}
+  for _, path in ipairs(paths) do
+    if not M.is_ai_tool_path(path) then
+      kept[#kept + 1] = path
     end
   end
   return kept
@@ -440,7 +455,8 @@ end
 
 -- Open every file changed in `range` (see changed_files; nil = uncommitted
 -- changes) as an editable buffer, as opposed to <F1>, which shows the same set
--- in a read-only Diffview. Files are added with :badd (cheap, no
+-- in a read-only Diffview. Paths under M.ai_tool_dirs are left out, same as
+-- the Git status Diffview. Files are added with :badd (cheap, no
 -- LSP/Treesitter attach) and only the first is actually opened.
 function M.edit_changed(range)
   local what = range and ("changed in " .. range) or "with uncommitted changes"
@@ -455,8 +471,14 @@ function M.edit_changed(range)
     notify("Failed to list files " .. what .. " (unknown revision?)", vim.log.levels.ERROR)
     return
   end
+  local listed = #files
+  files = without_ai_tool_paths(files)
   if #files == 0 then
-    notify("No files " .. what)
+    if listed > 0 then
+      notify("No files " .. what .. " outside AI tool directories")
+    else
+      notify("No files " .. what)
+    end
     return
   end
 
@@ -701,7 +723,7 @@ function M.setup()
     complete = function()
       return M.complete_branches()
     end,
-    desc = "Open all files differing from a base branch as buffers",
+    desc = "Open files differing from a base branch as buffers, skipping AI tool directories",
   })
 
   vim.api.nvim_create_user_command("CompareFiles", function()
