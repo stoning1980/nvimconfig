@@ -43,10 +43,23 @@ local LOCALS_ARGS = { "git", "for-each-ref", "--sort=-committerdate", "--format=
 
 -- Which PRIORITY_REMOTES exist. Asking for those refs by name keeps this to one
 -- cheap for-each-ref no matter how many remote branches the repo has.
-local PRIORITY_ARGS = { "git", "for-each-ref", "--format=%(refname:short)" }
+local PRIORITY_REFS = {}
 for _, p in ipairs(PRIORITY_REMOTES) do
-  table.insert(PRIORITY_ARGS, "refs/remotes/" .. p)
+  table.insert(PRIORITY_REFS, "refs/remotes/" .. p)
 end
+
+local function for_each_priority(format)
+  local args = { "git", "for-each-ref", "--format=" .. format }
+  for _, ref in ipairs(PRIORITY_REFS) do
+    table.insert(args, ref)
+  end
+  return args
+end
+
+local PRIORITY_ARGS = for_each_priority("%(refname:short)")
+-- Same refs, with the tip's committer time, so the F1/F2 picker can keep only
+-- the most recently updated one.
+local PRIORITY_DATE_ARGS = for_each_priority("%(committerdate:unix) %(refname:short)")
 
 -- Every remote branch, newest-committed first. This is the slow listing:
 -- `--sort=-committerdate` makes git read a commit object for every remote ref,
@@ -205,8 +218,37 @@ function M.get_branches_async(opts, cb)
   end
 end
 
--- Priority remotes that exist plus 20 recent commits, for the F1/F2 picker.
--- Both queries run concurrently; `cb(remotes, commits)` fires on completion.
+-- The single newest PRIORITY_REMOTES tip, by committer date. Lines are
+-- `for-each-ref` output: "<unix> <refname>". A tie keeps PRIORITY_REMOTES
+-- order (develop, then master, main, then dev). Missing refs are absent
+-- from the output, so one existing remote is returned as-is.
+---@param lines string[]?
+---@return string[]
+function M.newest_priority_remote(lines)
+  local rank = {}
+  for i, name in ipairs(PRIORITY_REMOTES) do
+    rank[name] = i
+  end
+  local best_name, best_date, best_rank
+  for _, line in ipairs(lines or {}) do
+    local date_s, name = line:match("^(%d+)%s+(%S+)$")
+    local date = date_s and tonumber(date_s)
+    local r = name and rank[name]
+    if date and r and (not best_date or date > best_date or (date == best_date and r < best_rank)) then
+      best_name, best_date, best_rank = name, date, r
+    end
+  end
+  if best_name then
+    return { best_name }
+  end
+  return {}
+end
+
+-- The newest priority remote (if any) plus 20 recent commits, for the F1/F2
+-- picker. Both queries run concurrently; `cb(remotes, commits)` fires on
+-- completion. `remotes` has at most one entry: when several of
+-- origin/develop, origin/master, origin/main, and origin/dev exist, only the
+-- most recently committed tip is listed.
 ---@param cb fun(remotes: string[], commits: string[])
 function M.get_picker_bases_async(cb)
   local results = {}
@@ -218,17 +260,10 @@ function M.get_picker_bases_async(cb)
       if pending > 0 then
         return
       end
-      local priority_set = as_set(results.priority)
-      local remotes = {}
-      for _, p in ipairs(PRIORITY_REMOTES) do
-        if priority_set[p] then
-          table.insert(remotes, p)
-        end
-      end
-      cb(remotes, results.commits or {})
+      cb(M.newest_priority_remote(results.priority), results.commits or {})
     end
   end
-  git_async(PRIORITY_ARGS, collect("priority"))
+  git_async(PRIORITY_DATE_ARGS, collect("priority"))
   git_async(RECENT_COMMITS_ARGS, collect("commits"))
 end
 

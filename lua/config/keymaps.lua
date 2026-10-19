@@ -43,8 +43,9 @@ end
 -- Toggle Diffview: close all diff tabs if one is open, else ask what to diff.
 --
 -- The prompt lists the uncommitted changes first, then HEAD against its parent
--- (`HEAD~..HEAD`), then the same ordered branch list `:EditDiff` and friends
--- complete against (origin/develop first). The first entry opens a working-tree
+-- (`HEAD~..HEAD`), then the newest of origin/develop, origin/master,
+-- origin/main, and origin/dev (by committer date; omitted when none exist),
+-- then 20 recent commits. The first entry opens a working-tree
 -- `:DiffviewOpen` that skips AI tool directories (see
 -- `config.git_diff.ai_tool_dirs`); the second opens `HEAD~..HEAD`; a branch
 -- opens `branch...HEAD`, i.e. what HEAD added since the merge-base.
@@ -121,8 +122,9 @@ local function open_base(choice)
   end
 end
 
--- The <F1>/<F2> base picker: uncommitted changes, HEAD~..HEAD, priority
--- remotes (origin/develop etc.), then 20 recent commits.
+-- The <F1>/<F2> base picker: uncommitted changes, HEAD~..HEAD, the newest
+-- priority remote (origin/develop, origin/master, origin/main, origin/dev),
+-- then 20 recent commits.
 ---@param opts { title: string, edit?: boolean }
 ---@param on_base fun(choice: string)
 local function pick_base(opts, on_base)
