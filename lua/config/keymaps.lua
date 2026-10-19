@@ -44,10 +44,10 @@ end
 --
 -- The prompt lists the uncommitted changes first, then HEAD against its parent
 -- (`HEAD~..HEAD`), then the same ordered branch list `:EditDiff` and friends
--- complete against (origin/develop first). The first entry opens a bare
--- `:DiffviewOpen` (working tree vs index+HEAD); the second opens
--- `HEAD~..HEAD`; a branch opens `branch...HEAD`, i.e. what HEAD added since
--- the merge-base.
+-- complete against (origin/develop first). The first entry opens a working-tree
+-- `:DiffviewOpen` that skips AI tool directories (see
+-- `config.git_diff.ai_tool_dirs`); the second opens `HEAD~..HEAD`; a branch
+-- opens `branch...HEAD`, i.e. what HEAD added since the merge-base.
 --
 -- The last entry re-opens the prompt with every remote branch. That listing is
 -- the one slow query in a big repo (see lua/config/git_diff.lua), so it is kept
@@ -81,8 +81,12 @@ local function describe_base(choice, edit)
   local title, scope
   if choice == WORKING_TREE then
     title = "Working tree vs index + HEAD"
-    scope = edit and "Everything not yet committed (staged, unstaged and untracked)."
-      or "Everything not yet committed (staged and unstaged)."
+    if edit then
+      scope = "Everything not yet committed (staged, unstaged and untracked)."
+    else
+      local dirs = table.concat(require("config.git_diff").ai_tool_dirs, ", ")
+      scope = "Staged and unstaged changes, leaving out AI tool directories (" .. dirs .. ")."
+    end
   elseif choice == PREVIOUS_COMMIT then
     title, scope = "HEAD vs its parent", "The changes made by the last commit."
   else
@@ -103,7 +107,17 @@ end
 
 local function open_base(choice)
   local range = base_range(choice)
-  vim.cmd("DiffviewOpen" .. (range and (" " .. range) or ""))
+  if range then
+    vim.cmd("DiffviewOpen " .. range)
+    return
+  end
+  local git_diff = require("config.git_diff")
+  git_diff.arm_ai_tool_filter()
+  local ok, err = pcall(vim.cmd, "DiffviewOpen")
+  if not ok then
+    git_diff.disarm_ai_tool_filter()
+    error(err)
+  end
 end
 
 -- The <F1>/<F2> base picker: uncommitted changes, HEAD~..HEAD, priority

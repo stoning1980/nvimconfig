@@ -317,6 +317,104 @@ local function repo_root()
   return out and out[1] or nil
 end
 
+-- Dot-directories owned by coding agents. <F1>'s "Git status" Diffview skips
+-- these anywhere in the tree; they are tool state, not changes to review.
+--
+-- This is applied to the file list after Git returns it. Passing the same
+-- paths as Diffview path args makes them the diff scope: the panel says
+-- "Showing changes for" those globs and the real changes disappear.
+M.ai_tool_dirs = {
+  ".agent",
+  ".agents",
+  ".aider",
+  ".amazonq",
+  ".augment",
+  ".claude",
+  ".cline",
+  ".codeium",
+  ".codex",
+  ".continue",
+  ".copilot",
+  ".cursor",
+  ".gemini",
+  ".kilocode",
+  ".opencode",
+  ".roo",
+  ".trae",
+  ".ttadk",
+  ".windsurf",
+}
+
+local ai_tool_dir_set = {}
+for _, dir in ipairs(M.ai_tool_dirs) do
+  ai_tool_dir_set[dir] = true
+end
+
+-- True when any path segment is an AI tool directory. `.agent` does not match
+-- `.agency`.
+function M.is_ai_tool_path(path)
+  if not path or path == "" then
+    return false
+  end
+  for segment in path:gmatch("[^/\\]+") do
+    if ai_tool_dir_set[segment] then
+      return true
+    end
+  end
+  return false
+end
+
+local function without_ai_tool_files(entries)
+  local kept = {}
+  for _, entry in ipairs(entries) do
+    if not M.is_ai_tool_path(entry.path) then
+      kept[#kept + 1] = entry
+    end
+  end
+  return kept
+end
+
+-- Drop AI tool entries from a Diffview FileDict. The current path is what the
+-- panel lists; a rename out of a tool directory into the tree still shows.
+function M.drop_ai_tool_files(files)
+  files:set_conflicting(without_ai_tool_files(files.conflicting))
+  files:set_working(without_ai_tool_files(files.working))
+  files:set_staged(without_ai_tool_files(files.staged))
+  files:update_file_trees()
+end
+
+-- Set just before the working-tree :DiffviewOpen from <F1>. The view_opened
+-- hook consumes it so a later branch diff is left alone.
+local filter_working_tree = false
+
+function M.arm_ai_tool_filter()
+  filter_working_tree = true
+end
+
+function M.disarm_ai_tool_filter()
+  filter_working_tree = false
+end
+
+function M.consume_ai_tool_filter(view)
+  if not filter_working_tree then
+    return
+  end
+  filter_working_tree = false
+  if not view or not view.get_updated_files then
+    return
+  end
+
+  local async = require("diffview.async")
+  local orig = view.get_updated_files
+  view.get_updated_files = async.wrap(function(self, callback)
+    local err, files = async.await(orig(self))
+    if files then
+      M.drop_ai_tool_files(files)
+    end
+    callback(err, files)
+  end)
+end
+
 -- Above this many files, ask before opening them all — picking the wrong base
 -- branch easily matches hundreds of unrelated files.
 local EDIT_DIFF_CONFIRM_AT = 20

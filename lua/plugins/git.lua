@@ -17,6 +17,14 @@ return {
       default_args = {
         DiffviewOpen = { "-uno" },
       },
+      -- <F1> Git status arms this so tool directories are removed from the
+      -- file list. Path args cannot do it: Diffview would show them as the
+      -- diff scope and the real changes would disappear.
+      hooks = {
+        view_opened = function(view)
+          require("config.git_diff").consume_ai_tool_filter(view)
+        end,
+      },
     },
   },
 }
