@@ -6,6 +6,10 @@ return {
       { "<leader>gd", "<cmd>DiffviewOpen<cr>", desc = "Diffview Open" },
       { "<leader>gD", "<cmd>DiffviewClose<cr>", desc = "Diffview Close" },
     },
+    config = function(_, opts)
+      require("diffview").setup(opts)
+      require("config.diffview_bootstrap").setup()
+    end,
     opts = {
       -- Dim unchanged regions and emphasize the actual changed text/words.
       enhanced_diff_hl = true,
