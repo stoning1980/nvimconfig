@@ -206,6 +206,15 @@ local function unsaved_buffers()
   return out
 end
 
+local function stop_codechat()
+  -- Only if the plugin is already loaded. Requiring it here would start the
+  -- agent module just to discover that nothing is running.
+  local term = package.loaded["codechat.terminal"]
+  if type(term) == "table" and type(term.stop_all) == "function" then
+    pcall(term.stop_all)
+  end
+end
+
 local function stop_lsp()
   local get = vim.lsp and vim.lsp.get_clients
   if type(get) ~= "function" then
@@ -314,6 +323,96 @@ local function show_dashboard(scratch)
   end
 end
 
+--- Ask before throwing away modified file buffers. True when there is nothing
+--- to lose, or the user picks Yes. `action` finishes the question, for example
+--- "Switch project?".
+---@param action string
+---@return boolean
+function M.confirm_discard(action)
+  local unsaved = unsaved_buffers()
+  if #unsaved == 0 then
+    return true
+  end
+  local noun = #unsaved == 1 and "1 unsaved buffer" or (#unsaved .. " unsaved buffers")
+  local choice = vim.fn.confirm(noun .. " will be discarded. " .. action, "&Yes\n&No", 2)
+  return choice == 1
+end
+
+--- Close every window, tab, terminal, and buffer, then show the dashboard.
+--- Does not change the directory. Callers confirm unsaved buffers first;
+--- this force-closes whatever is left.
+---
+--- `before_dashboard`, when set, runs after the old UI is gone and events are
+--- restored, before jumps are cleared. Return false to keep the dashboard
+--- from opening again (the hook already showed it, usually because a later
+--- step failed).
+---@param before_dashboard? fun(scratch: integer): boolean?
+---@return boolean ok
+---@return string|nil err
+local function reset_editor(before_dashboard)
+  if switching then
+    return false, "in progress"
+  end
+
+  switching = true
+  local saved_eventignore = vim.o.eventignore
+  local function restore_events()
+    if vim.o.eventignore ~= saved_eventignore then
+      vim.o.eventignore = saved_eventignore
+    end
+  end
+
+  local ok, err = xpcall(function()
+    close_diffview()
+    stop_codechat()
+    stop_lsp()
+
+    -- Plugin autocmds (Diffview follow, file explorers, session savers,
+    -- TermClose) fire on every buffer and window close and will try to
+    -- rebuild the session we are throwing away. Silence them until the
+    -- optional cwd change, which should be the one event the new project sees.
+    vim.o.eventignore = "all"
+    stop_terminals()
+
+    if not collapse_to_one_window() then
+      error("no window left to switch")
+    end
+    local scratch = vim.api.nvim_create_buf(false, true)
+    local win = vim.api.nvim_get_current_win()
+    local set_ok = pcall(vim.api.nvim_win_set_buf, win, scratch)
+    if not set_ok then
+      error("could not park the window on a scratch buffer")
+    end
+    wipe_buffers(scratch)
+    clear_lists()
+
+    restore_events()
+
+    if before_dashboard and before_dashboard(scratch) == false then
+      return
+    end
+
+    pcall(vim.cmd, "silent! clearjumps")
+    pcall(vim.cmd, "silent! delmarks!")
+    show_dashboard(scratch)
+  end, debug.traceback)
+
+  restore_events()
+  switching = false
+  if not ok then
+    return false, tostring(err)
+  end
+  return true
+end
+
+--- Tear down the editor and show the dashboard, staying in the current
+--- directory. Used after a git branch switch. The caller reports failure.
+---@return boolean ok
+---@return string|nil err
+function M.wipe_editor()
+  return reset_editor()
+end
+
 --- Reset the whole session and switch to `dir`, as if reopening nvim there.
 ---
 --- Nothing is destroyed until the path is a directory we can enter and the
@@ -343,13 +442,8 @@ function M.goto_dir(dir)
     return
   end
 
-  local unsaved = unsaved_buffers()
-  if #unsaved > 0 then
-    local noun = #unsaved == 1 and "1 unsaved buffer" or (#unsaved .. " unsaved buffers")
-    local choice = vim.fn.confirm(noun .. " will be discarded. Switch project?", "&Yes\n&No", 2)
-    if choice ~= 1 then
-      return
-    end
+  if not M.confirm_discard("Switch project?") then
+    return
   end
 
   -- The directory can disappear between the prompt and the wipe. Check again
@@ -360,64 +454,32 @@ function M.goto_dir(dir)
     return
   end
 
-  switching = true
-  local saved_eventignore = vim.o.eventignore
-  local function restore_events()
-    if vim.o.eventignore ~= saved_eventignore then
-      vim.o.eventignore = saved_eventignore
-    end
-  end
-
-  local ok, err = xpcall(function()
-    close_diffview()
-    stop_lsp()
-
-    -- Plugin autocmds (Diffview follow, file explorers, session savers,
-    -- TermClose) fire on every buffer and window close and will try to
-    -- rebuild the session we are throwing away. Silence them until the cwd
-    -- change, which should be the one event the new project sees.
-    vim.o.eventignore = "all"
-    stop_terminals()
-
-    if not collapse_to_one_window() then
-      error("no window left to switch")
-    end
-    local scratch = vim.api.nvim_create_buf(false, true)
-    local win = vim.api.nvim_get_current_win()
-    local set_ok = pcall(vim.api.nvim_win_set_buf, win, scratch)
-    if not set_ok then
-      error("could not park the window on a scratch buffer")
-    end
-    wipe_buffers(scratch)
-    clear_lists()
-
-    restore_events()
-
+  local entered = false
+  local ok, err = reset_editor(function(scratch)
     -- Drops a window-local or tab-local directory, which would otherwise
     -- hide the global cwd from this tab.
     local ch_ok, ch_err = pcall(vim.api.nvim_set_current_dir, n)
     if not ch_ok then
       notify("Could not enter " .. n .. ": " .. tostring(ch_err), vim.log.levels.ERROR)
       show_dashboard(scratch)
-      return
+      return false
     end
+    entered = true
+  end)
 
-    pcall(vim.cmd, "silent! clearjumps")
-    pcall(vim.cmd, "silent! delmarks!")
-    show_dashboard(scratch)
-
-    local rec_ok, rec_err = record_recent(n)
-    if not rec_ok then
-      notify("Switched, but could not save recents: " .. tostring(rec_err), vim.log.levels.WARN)
-    end
-    notify("Switched to " .. vim.fn.fnamemodify(n, ":~"))
-  end, debug.traceback)
-
-  restore_events()
-  switching = false
   if not ok then
     notify("Project switch failed: " .. tostring(err), vim.log.levels.ERROR)
+    return
   end
+  if not entered then
+    return
+  end
+
+  local rec_ok, rec_err = record_recent(n)
+  if not rec_ok then
+    notify("Switched, but could not save recents: " .. tostring(rec_err), vim.log.levels.WARN)
+  end
+  notify("Switched to " .. vim.fn.fnamemodify(n, ":~"))
 end
 
 --- Open the directory picker.

@@ -11,7 +11,8 @@
 -- │ S-F3    : n → next file entry (Diffview only)                        │
 -- │ S-F4    : n → toggle git annotate panel (per-line author/date)       │
 -- │ F4      : n → resume last Snacks picker search                       │
--- │ F5      : all modes → jump back (jumplist <C-o>)                     │
+-- │ F5      : all modes → local branch, then close files and session     │
+-- │ S-F5    : all modes → remote branch, then close files and session    │
 -- │ F6      : n/i/t/c → :GitGrep (git-tracked) | v/s → grep selection    │
 -- │ F7      : n → grep open buffers  |  v → grep selection in buffers    │
 -- │ F8      : v → send selection | n → send buffered files (claudeide)   │
@@ -241,6 +242,10 @@ require("config.diffview_follow").setup()
 -- Register the `:Goto` project switcher (recents + autojump.txt list).
 require("config.goto").setup()
 
+-- Register `:GitBranch` (local, like shell `lbr`) and `:GitRemoteBranch`
+-- (remote, like shell `rbr`). A real checkout closes open files and the session.
+require("config.git_branch").setup()
+
 -- Register `:GitGrep` — live grep over git-tracked files via `git grep`, which
 -- is dramatically faster than rg in very large repos (see lua/config/git_grep.lua).
 require("config.git_grep").setup()
@@ -319,19 +324,29 @@ end
 map("n", "<S-F3>", next_diff_file, { desc = "Next File (Diffview)" })
 map("n", "<F15>", next_diff_file, { desc = "Next File (Diffview)" })
 
--- F5: jump back in the jumplist, like an IDE's back button (jump forward is
--- plain <C-i>). <C-o> is a normal-mode motion, so from any other mode we first
--- drop to normal with <C-\><C-N> (works from insert, visual, and terminal) and
--- then perform the jump. Feeding the keys with noremap ("n") keeps the motion
--- from being remapped.
-local function jumplist(motion)
+-- F5: pick a local branch (shell `lbr`) and check it out. Shift+F5 picks a
+-- remote branch (shell `rbr`). Each row shows when that branch was last
+-- committed and the commit message. From insert, visual, or a terminal we
+-- first drop to normal with <C-\><C-N>, then open the picker. Terminals emit
+-- Shift+F5 as <F17>. A checkout that moves HEAD closes every open file.
+local function switch_branch(remote)
   return function()
-    local keys = vim.api.nvim_replace_termcodes("<C-\\><C-N>" .. motion, true, false, true)
+    local function open()
+      require("config.git_branch").pick({ remote = remote })
+    end
+    if vim.fn.mode() == "n" then
+      open()
+      return
+    end
+    local keys = vim.api.nvim_replace_termcodes("<C-\\><C-N>", true, false, true)
     vim.api.nvim_feedkeys(keys, "n", false)
+    vim.schedule(open)
   end
 end
 
-map({ "n", "i", "v", "x", "s", "t" }, "<F5>", jumplist("<C-o>"), { desc = "Jump back" })
+map({ "n", "i", "v", "x", "s", "t" }, "<F5>", switch_branch(false), { desc = "Switch local git branch" })
+map({ "n", "i", "v", "x", "s", "t" }, "<S-F5>", switch_branch(true), { desc = "Switch remote git branch" })
+map({ "n", "i", "v", "x", "s", "t" }, "<F17>", switch_branch(true), { desc = "Switch remote git branch" })
 
 -- F6: :GitGrep — live grep over git-tracked files. Normal/insert/terminal/
 -- cmdline → empty prompt; visual/select → seeded with the selection (first
