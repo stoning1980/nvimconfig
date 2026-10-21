@@ -4,7 +4,7 @@
 --
 -- ┌─ Function key cheatsheet (this file + plugin keys) ──────────────────┐
 -- │ F1      : n → toggle Diffview (status / commit / remote vs HEAD)     │
--- │ F2      : n → open files changed vs a picked base (same menu as F1)  │
+-- │ F2      : all modes → close buffers, open files vs a picked base     │
 -- │ S-F1    : n → toggle Diffview file panel (:DiffviewToggleFiles)      │
 -- │ S-F2    : n → open current diff's two sides in Beyond Compare        │
 -- │ F3      : n → next diff hunk (Diffview only; error else)             │
@@ -101,7 +101,8 @@ local function describe_base(choice, edit)
     end
   end
   if edit then
-    local body = "Opens every changed file as a buffer. Deleted files and AI tool directories are skipped."
+    local body =
+      "Closes other open buffers, then opens every changed file. Deleted files and AI tool directories are skipped."
     return ("%s\n\n%s\n\n%s"):format(title, body, scope)
   end
   local range = base_range(choice)
@@ -191,13 +192,24 @@ local function toggle_diffview()
   pick_base({ title = "Diffview" }, open_base)
 end
 
--- Like <F1>, but instead of a Diffview it opens every file that differs from
--- the chosen base as a regular, editable buffer. AI tool directories are
--- skipped for every base, using the same path check as the Git status Diffview.
+-- Like <F1>, but instead of a Diffview it closes the other buffers and opens
+-- every file that differs from the chosen base as a regular, editable buffer.
+-- AI tool directories are skipped for every base, using the same path check as
+-- the Git status Diffview. From insert, visual, select, the command line, or a
+-- terminal, drop to normal first, the same way <F5> does, then open the picker.
 local function edit_changed_files()
-  pick_base({ title = "Open changed files", edit = true }, function(choice)
-    require("config.git_diff").edit_changed(base_range(choice))
-  end)
+  local function open()
+    pick_base({ title = "Open changed files", edit = true }, function(choice)
+      require("config.git_diff").edit_changed(base_range(choice))
+    end)
+  end
+  if vim.fn.mode() == "n" then
+    open()
+    return
+  end
+  local keys = vim.api.nvim_replace_termcodes("<C-\\><C-N>", true, false, true)
+  vim.api.nvim_feedkeys(keys, "n", false)
+  vim.schedule(open)
 end
 
 -- Toggle the current Diffview's layout between side-by-side (left/right) and
@@ -220,17 +232,20 @@ vim.api.nvim_create_user_command("DiffviewCycleLayout", cycle_diffview_layout, {
 -- F1: Toggle Diffview (picks a base when opening).
 map("n", "<F1>", toggle_diffview, { desc = "Toggle Diffview" })
 
--- F2: Open the files that differ from a picked base as buffers. The Diffview
--- file panel toggle it used to hold is still `:DiffviewToggleFiles`.
-map("n", "<F2>", edit_changed_files, { desc = "Open changed files (pick base)" })
+-- F2: Close the other buffers, then open the files that differ from a picked
+-- base. Available in normal, insert, visual, select, command-line, and
+-- terminal. The Diffview file panel toggle it used to hold is still
+-- `:DiffviewToggleFiles`.
+map({ "n", "i", "v", "x", "s", "t", "c" }, "<F2>", edit_changed_files, { desc = "Close buffers, open changed files" })
 
 -- Give Snacks' `vim.ui.select` picker an integral list height, which it
 -- otherwise miscomputes and crashes on (see lua/config/ui_select.lua).
 require("config.ui_select").setup()
 
 -- Register the `:Pdf` (a commit's own changes), `:CompareHead` (HEAD vs a
--- previous commit), `:EditDiff` (open the files that differ from a base branch
--- as buffers, with branch-name completion, defaults to origin/develop) and
+-- previous commit), `:EditDiff` (close other buffers, then open the files that
+-- differ from a base branch, with branch-name completion, defaults to
+-- origin/develop) and
 -- `:DiffThisFile` (diff the focused file against a branch, same completion and
 -- default) commands.
 require("config.git_diff").setup()

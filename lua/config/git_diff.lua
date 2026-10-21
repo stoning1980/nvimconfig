@@ -1,8 +1,8 @@
 -- Diffview review commands:
 --   :Pdf          show one commit's own changes (Tab: last 20 commits incl. HEAD)
 --   :CompareHead  compare HEAD with a previous commit (Tab: last 20 ancestors)
---   :EditDiff     open every file differing from a base branch as a buffer
---                 (Tab: ordered branches, defaults to origin/develop;
+--   :EditDiff     close other buffers, then open every file differing from a
+--                 base branch (Tab: ordered branches, defaults to origin/develop;
 --                 confirms past 20 files; skips AI tool directories)
 --   :CompareFiles diff two repo files picked from a fuzzy list (Tab to select two)
 --   :DiffThisFile diff the focused file against a version (same branch list as
@@ -469,6 +469,187 @@ end
 -- branch easily matches hundreds of unrelated files.
 local EDIT_DIFF_CONFIRM_AT = 20
 
+-- Stable absolute path for comparing a git path with a buffer name. A missing
+-- file has no realpath; normalize still makes the two spellings match.
+local function canonical(path)
+  if not path or path == "" then
+    return nil
+  end
+  local abs = vim.fn.fnamemodify(path, ":p")
+  return vim.uv.fs_realpath(abs) or vim.fs.normalize(abs)
+end
+
+-- An existing buffer for `path`, matched by real path so a /var vs /private/var
+-- spelling does not open a second copy and drop unsaved edits.
+local function buffer_for(path)
+  local want = canonical(path)
+  if not want then
+    return nil
+  end
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_valid(buf) and canonical(vim.api.nvim_buf_get_name(buf)) == want then
+      return buf
+    end
+  end
+  return nil
+end
+
+local function is_kept_buf(buf, keep)
+  local name = vim.api.nvim_buf_get_name(buf)
+  if name == "" or name:find("^%a[%w+.-]*://") then
+    return false
+  end
+  local c = canonical(name)
+  return c ~= nil and keep[c] == true
+end
+
+-- Listed buffers that are not part of the diff about to be opened.
+local function other_listed(keep)
+  local bufs = {}
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_valid(buf) and vim.bo[buf].buflisted and not is_kept_buf(buf, keep) then
+      bufs[#bufs + 1] = buf
+    end
+  end
+  return bufs
+end
+
+-- File buffers whose text would be lost. Terminals, help, and URI views
+-- (diffview://, …) are closed with the rest and are not unsaved work.
+local function unsaved_outside(keep)
+  local n = 0
+  for _, buf in ipairs(other_listed(keep)) do
+    if vim.bo[buf].modified then
+      local bt = vim.bo[buf].buftype
+      if bt == "" or bt == "acwrite" then
+        n = n + 1
+      end
+    end
+  end
+  return n
+end
+
+local function stop_codechat()
+  local term = package.loaded["codechat.terminal"]
+  if type(term) == "table" and type(term.stop_all) == "function" then
+    pcall(term.stop_all)
+  end
+end
+
+local function stop_terminals()
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_valid(buf) and vim.bo[buf].buftype == "terminal" then
+      local job = vim.b[buf].terminal_job_id
+      if type(job) == "number" and job > 0 then
+        pcall(vim.fn.jobstop, job)
+      end
+    end
+  end
+end
+
+-- Close ordinary windows showing a buffer we are about to delete. A window
+-- that already shows one of the diff files stays. Never closes the current
+-- window, which would quit Neovim when it is the last one.
+local function close_windows_of(buf)
+  local current = vim.api.nvim_get_current_win()
+  for _, win in ipairs(vim.fn.win_findbuf(buf)) do
+    if win ~= current and vim.api.nvim_win_is_valid(win) then
+      local cfg = vim.api.nvim_win_get_config(win)
+      if cfg.relative == "" then
+        pcall(vim.api.nvim_win_close, win, true)
+      end
+    end
+  end
+end
+
+local function wipe_other_listed(scratch, keep)
+  local function wipe_once()
+    for _, buf in ipairs(other_listed(keep)) do
+      if buf ~= scratch and vim.api.nvim_buf_is_valid(buf) then
+        close_windows_of(buf)
+        if vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_get_current_buf() ~= buf then
+          pcall(vim.api.nvim_buf_delete, buf, { force = true })
+        end
+      end
+    end
+  end
+  wipe_once()
+  wipe_once()
+end
+
+-- Close every listed buffer that is not one of `paths`, so the buffer list is
+-- only the diff about to be opened. A modified file outside that set is
+-- discarded only after a confirm. Returns false when the user declines.
+-- When the current window is showing one of those buffers, `scratch` is an
+-- unlisted buffer parked there so the wipe cannot quit Neovim. The caller
+-- opens the diff files and then deletes it.
+---@param paths string[]
+---@return boolean ok
+---@return integer? scratch
+local function close_other_buffers(paths)
+  local keep = {}
+  for _, path in ipairs(paths) do
+    local c = canonical(path)
+    if c then
+      keep[c] = true
+    end
+  end
+  if #other_listed(keep) == 0 then
+    return true, nil
+  end
+
+  local discard = unsaved_outside(keep)
+  if discard > 0 then
+    local noun = discard == 1 and "1 unsaved buffer" or (discard .. " unsaved buffers")
+    if vim.fn.confirm(noun .. " will be discarded. Open changed files?", "&Yes\n&No", 2) ~= 1 then
+      return false, nil
+    end
+  end
+
+  if vim.fn.exists(":DiffviewClose") == 2 then
+    pcall(vim.cmd, "silent! DiffviewClose")
+  end
+  stop_codechat()
+  stop_terminals()
+
+  local saved_hidden = vim.o.hidden
+  local saved_eventignore = vim.o.eventignore
+  local function restore()
+    vim.o.hidden = saved_hidden
+    if vim.o.eventignore ~= saved_eventignore then
+      vim.o.eventignore = saved_eventignore
+    end
+  end
+
+  vim.o.hidden = true
+  -- File explorers and the Diffview follow hook rebuild windows on every
+  -- close. Silence them until the diff files are what remains.
+  vim.o.eventignore = "all"
+
+  local scratch
+  local ok, err = pcall(function()
+    local current = vim.api.nvim_get_current_buf()
+    if vim.api.nvim_buf_is_valid(current) and not is_kept_buf(current, keep) then
+      scratch = vim.api.nvim_create_buf(false, true)
+      local win = vim.api.nvim_get_current_win()
+      if not pcall(vim.api.nvim_win_set_buf, win, scratch) then
+        error("could not switch away from the current buffer")
+      end
+    end
+    wipe_other_listed(scratch, keep)
+  end)
+
+  restore()
+  if not ok then
+    if scratch and vim.api.nvim_buf_is_valid(scratch) and vim.api.nvim_get_current_buf() ~= scratch then
+      pcall(vim.api.nvim_buf_delete, scratch, { force = true })
+    end
+    notify("Could not close open buffers: " .. tostring(err), vim.log.levels.ERROR)
+    return false, nil
+  end
+  return true, scratch
+end
+
 -- Base branch used when :EditDiff or :DiffThisFile is called without an argument.
 local DEFAULT_BASE = "origin/develop"
 
@@ -491,8 +672,10 @@ end
 -- Open every file changed in `range` (see changed_files; nil = uncommitted
 -- changes) as an editable buffer, as opposed to <F1>, which shows the same set
 -- in a read-only Diffview. Paths under M.ai_tool_dirs are left out, same as
--- the Git status Diffview. Files are added with :badd (cheap, no
--- LSP/Treesitter attach) and only the first is actually opened.
+-- the Git status Diffview. Other listed buffers are closed first, so the
+-- buffer list is only these files; a buffer already showing one of them is
+-- kept, including unsaved edits. Files are added with bufadd (cheap, no
+-- LSP/Treesitter attach) and only the first is actually shown.
 function M.edit_changed(range)
   local what = range and ("changed in " .. range) or "with uncommitted changes"
   local root = repo_root()
@@ -524,10 +707,40 @@ function M.edit_changed(range)
     end
   end
 
+  local paths = {}
   for _, rel in ipairs(files) do
-    vim.cmd("badd " .. vim.fn.fnameescape(root .. "/" .. rel))
+    paths[#paths + 1] = root .. "/" .. rel
   end
-  vim.cmd("edit " .. vim.fn.fnameescape(root .. "/" .. files[1]))
+  local closed, scratch = close_other_buffers(paths)
+  if not closed then
+    return
+  end
+
+  -- 'hidden' lets us leave a modified diff file without discarding its text.
+  -- :badd of that same buffer raises E37, so list the files through bufadd.
+  local saved_hidden = vim.o.hidden
+  vim.o.hidden = true
+  local opened, open_err = pcall(function()
+    local first
+    for _, path in ipairs(paths) do
+      local buf = buffer_for(path) or vim.fn.bufadd(path)
+      vim.bo[buf].buflisted = true
+      if not first then
+        first = buf
+      end
+    end
+    if first and vim.api.nvim_buf_is_valid(first) then
+      vim.api.nvim_set_current_buf(first)
+    end
+  end)
+  vim.o.hidden = saved_hidden
+  if not opened then
+    notify("Could not open changed files: " .. tostring(open_err), vim.log.levels.ERROR)
+    return
+  end
+  if scratch and vim.api.nvim_buf_is_valid(scratch) and vim.api.nvim_get_current_buf() ~= scratch then
+    pcall(vim.api.nvim_buf_delete, scratch, { force = true })
+  end
   notify(string.format("Opened %d file(s) %s", #files, what))
 end
 
@@ -758,7 +971,7 @@ function M.setup()
     complete = function()
       return M.complete_branches()
     end,
-    desc = "Open files differing from a base branch as buffers, skipping AI tool directories",
+    desc = "Close other buffers, then open files differing from a base branch",
   })
 
   vim.api.nvim_create_user_command("CompareFiles", function()

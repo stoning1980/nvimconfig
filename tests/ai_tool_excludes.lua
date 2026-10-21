@@ -110,12 +110,51 @@ local function wipe_buffers()
   end
 end
 
+local function listed_buf_text(rel)
+  local toplevel = vim.trim(vim.fn.system({ "git", "rev-parse", "--show-toplevel" }))
+  local target = toplevel .. "/" .. rel
+  local real = vim.uv.fs_realpath(target) or target
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.fn.buflisted(buf) == 1 then
+      local name = vim.api.nvim_buf_get_name(buf)
+      if name == real or name == target then
+        return table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n")
+      end
+    end
+  end
+  return nil
+end
+
 local prev = vim.fn.getcwd()
 vim.cmd.cd(root .. "/src")
 
+-- A file outside the diff, plus unsaved edits in a file the diff will open.
+-- F2 must drop the former and keep the latter.
+write(root .. "/src/unrelated.txt", "leave me")
+vim.cmd("tabnew " .. vim.fn.fnameescape(root .. "/src/unrelated.txt"))
+vim.cmd("split " .. vim.fn.fnameescape(root .. "/src/real.kt"))
+vim.api.nvim_buf_set_lines(0, 0, -1, false, { "unsaved local edit" })
+
 git_diff.edit_changed("HEAD~..HEAD")
 assert_eq(buffer_rels(), ".agency/keep.txt\nsrc/real.kt", "F2 commit range")
+assert_eq(listed_buf_text("src/real.kt"), "unsaved local edit", "F2 keeps unsaved edits in a diff file")
+assert(vim.fn.tabpagenr("$") == 1, "F2 closed the tab that only showed an unrelated file")
 wipe_buffers()
+
+-- Declining the unsaved prompt leaves the open buffers alone.
+write(root .. "/src/unrelated.txt", "still here")
+vim.cmd("edit " .. vim.fn.fnameescape(root .. "/src/unrelated.txt"))
+vim.api.nvim_buf_set_lines(0, 0, -1, false, { "dirty" })
+local saved_confirm = vim.fn.confirm
+vim.fn.confirm = function()
+  return 2
+end
+git_diff.edit_changed("HEAD~..HEAD")
+vim.fn.confirm = saved_confirm
+assert(listed_buf_text("src/unrelated.txt") == "dirty", "declining the prompt keeps the unsaved buffer")
+assert(listed_buf_text("src/real.kt") == nil, "declining the prompt does not open the diff")
+wipe_buffers()
+vim.fn.delete(root .. "/src/unrelated.txt")
 
 git_diff.edit_changed(nil)
 assert_eq(buffer_rels(), ".agency/keep.txt\nsrc/new.kt\nsrc/real.kt", "F2 working tree")
