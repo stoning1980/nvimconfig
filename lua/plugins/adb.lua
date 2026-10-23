@@ -6,15 +6,14 @@ return {
   name = "adbhelper.nvim",
   event = "VeryLazy",
   cmd = { "AdbSendText", "AdbSendClipboard", "AdbMenu" },
-  -- F12: send to Android device (visual → selection, normal → the WORD under
-  -- the cursor, also copied to the system clipboard). A WORD runs until
-  -- whitespace, so each address on a line is sent on its own. Repeated presses
-  -- walk WORD by WORD.
+  -- F12: visual → send the selection to the Android device. Normal → copy the
+  -- WORD under the cursor to the system clipboard and do not send it. A WORD
+  -- runs until whitespace, so one address on a line is copied.
   -- Shift+F12 opens the action menu; terminals emit shifted F12 as <F24>, so
   -- map both spellings.
   keys = {
     { "<F12>", ":<C-u>AdbSendText<cr>", mode = "v", desc = "Send selection to Android device" },
-    { "<F12>", "<cmd>AdbSendClipboard<cr>", mode = "n", desc = "Send WORD under cursor and copy it" },
+    { "<F12>", "<cmd>AdbSendClipboard<cr>", mode = "n", desc = "Copy WORD under cursor to clipboard" },
     { "<S-F12>", "<cmd>AdbMenu<cr>", mode = "n", desc = "AdbHelper action menu" },
     { "<F24>", "<cmd>AdbMenu<cr>", mode = "n", desc = "AdbHelper action menu" },
   },
@@ -26,7 +25,7 @@ return {
     end, { range = true, desc = "Send visual selection to Android device via adb" })
     vim.api.nvim_create_user_command("AdbSendClipboard", function()
       adb.send_clipboard()
-    end, { desc = "Send WORD under cursor to Android device and copy it" })
+    end, { desc = "Copy WORD under cursor to the system clipboard" })
     vim.api.nvim_create_user_command("AdbMenu", function()
       adb.action_menu()
     end, { desc = "AdbHelper: pick an adb action (A/B debug, kill, clear, relaunch)" })

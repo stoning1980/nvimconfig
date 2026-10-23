@@ -75,16 +75,14 @@ local function word_under_cursor()
   return table.concat(chars, "", first, last), offsets[last]
 end
 
---- Move the cursor to the start of the next word after `from` ({row, col} with a
+--- Move the cursor to the start of the word after `from` ({row, col} with a
 --- 1-indexed row and 0-indexed col). `from` must be the last character of the
---- text just sent, or the walk sends it again. `motion` is `W` after a
---- normal-mode WORD and `w` after a visual selection. This runs once the send
---- has finished, so it bails out when the user has moved on to another buffer
---- or is no longer in normal mode.
+--- visual selection just sent, or the walk lands inside it. This runs once the
+--- send has finished, so it bails out when the user has moved on to another
+--- buffer or is no longer in normal mode.
 ---@param buf integer buffer the text was sent from
 ---@param from integer[]
----@param motion "w"|"W"
-local function advance_to_next_word(buf, from, motion)
+local function advance_to_next_word(buf, from)
   if vim.api.nvim_get_current_buf() ~= buf or vim.fn.mode() ~= "n" then
     return
   end
@@ -96,7 +94,7 @@ local function advance_to_next_word(buf, from, motion)
   -- The '> mark uses v:maxcol for linewise selections, so clamp it.
   local col = math.max(math.min(from[2], #line - 1), 0)
   vim.api.nvim_win_set_cursor(0, { row, col })
-  vim.cmd("normal! " .. motion)
+  vim.cmd("normal! w")
 end
 
 --- Pick a device and send the given text to it.
@@ -129,26 +127,21 @@ function M.send_selection()
   local buf = vim.api.nvim_get_current_buf()
   local selection_end = vim.api.nvim_buf_get_mark(0, ">")
   send(text, function()
-    advance_to_next_word(buf, selection_end, "w")
+    advance_to_next_word(buf, selection_end)
   end)
 end
 
---- Send the WORD under the cursor to an Android device and copy that same WORD
---- to the system clipboard. A WORD is a run of non-blank characters, so each
---- address on a line is sent on its own. A successful send moves the cursor to
---- the next WORD.
+--- Copy the WORD under the cursor to the system clipboard. A WORD is a run of
+--- non-blank characters, so the address under the cursor is copied on its own.
+--- Nothing is sent to a device.
 function M.send_clipboard()
-  local text, end_col = word_under_cursor()
+  local text = word_under_cursor()
   if text == nil then
-    vim.notify("No text to send", vim.log.levels.WARN, { title = "AdbHelper" })
+    vim.notify("No text to copy", vim.log.levels.WARN, { title = "AdbHelper" })
     return
   end
   vim.fn.setreg("+", text)
-  local buf = vim.api.nvim_get_current_buf()
-  local row = vim.api.nvim_win_get_cursor(0)[1]
-  send(text, function()
-    advance_to_next_word(buf, { row, end_col }, "W")
-  end)
+  vim.notify("Copied to clipboard", vim.log.levels.INFO, { title = "AdbHelper" })
 end
 
 --- Show the adb action menu (device/app pickers follow the chosen action).
