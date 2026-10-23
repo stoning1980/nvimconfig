@@ -133,15 +133,17 @@ function M.send_selection()
   end)
 end
 
---- Send the WORD under the cursor to an Android device. A WORD is a run of
---- non-blank characters, so each address on a line is sent on its own. A
---- successful send moves the cursor to the next WORD.
+--- Send the WORD under the cursor to an Android device and copy that same WORD
+--- to the system clipboard. A WORD is a run of non-blank characters, so each
+--- address on a line is sent on its own. A successful send moves the cursor to
+--- the next WORD.
 function M.send_clipboard()
   local text, end_col = word_under_cursor()
   if text == nil then
     vim.notify("No text to send", vim.log.levels.WARN, { title = "AdbHelper" })
     return
   end
+  vim.fn.setreg("+", text)
   local buf = vim.api.nvim_get_current_buf()
   local row = vim.api.nvim_win_get_cursor(0)[1]
   send(text, function()
