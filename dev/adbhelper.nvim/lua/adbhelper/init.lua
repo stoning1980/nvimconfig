@@ -33,54 +33,24 @@ local function get_visual_selection()
   return table.concat(lines, "\n")
 end
 
---- Find the token under the cursor, using the same grouping as the `w` motion: a
---- run of keyword characters or a run of punctuation, with blanks skipped
---- forward. `expand("<cword>")` cannot be used here because it refuses to return
---- punctuation and silently jumps ahead to the next keyword instead, which makes
---- separators unsendable and repeats the following word.
----@return string? text, integer? end_col byte column (0-indexed) of the last character
-local function token_under_cursor()
-  local col = vim.api.nvim_win_get_cursor(0)[2]
-  local chars = vim.fn.split(vim.api.nvim_get_current_line(), "\\zs")
-  local offsets, byte = {}, 0
-  for i, ch in ipairs(chars) do
-    offsets[i] = byte
-    byte = byte + #ch
-  end
-
-  local idx
-  for i = 1, #chars do
-    if col < offsets[i] + #chars[i] then
-      idx = i
-      break
+--- The current line, when it contains something other than blanks. A blank line
+--- returns nil so the caller can fall back to the clipboard.
+---@return string?
+local function current_line_text()
+  local line = vim.api.nvim_get_current_line()
+  for _, ch in ipairs(vim.fn.split(line, "\\zs")) do
+    if vim.fn.charclass(ch) ~= 0 then
+      return line
     end
   end
-  -- Cursor on a blank: the token is the next one on the line, matching where a
-  -- `w` motion would land.
-  while idx and vim.fn.charclass(chars[idx]) == 0 do
-    idx = idx < #chars and idx + 1 or nil
-  end
-  if not idx then
-    return nil, nil
-  end
-
-  local class = vim.fn.charclass(chars[idx])
-  local first, last = idx, idx
-  while first > 1 and vim.fn.charclass(chars[first - 1]) == class do
-    first = first - 1
-  end
-  while last < #chars and vim.fn.charclass(chars[last + 1]) == class do
-    last = last + 1
-  end
-  return table.concat(chars, "", first, last), offsets[last]
+  return nil
 end
 
---- Move the cursor to the start of the token following `from` ({row, col} with a
---- 1-indexed row and 0-indexed col), so repeated sends walk through the buffer
---- token by token. `from` must be the last character of the token just sent, or
---- the walk sends that token again. This runs once the send has finished, so it
---- bails out when the user has moved on to another buffer or is no longer in
---- normal mode.
+--- Move the cursor to the start of the word following `from` ({row, col} with a
+--- 1-indexed row and 0-indexed col). `from` must be the last character of the
+--- selection just sent, or the walk lands inside it. This runs once the send
+--- has finished, so it bails out when the user has moved on to another buffer
+--- or is no longer in normal mode.
 ---@param buf integer buffer the text was sent from
 ---@param from integer[]
 local function advance_to_next_word(buf, from)
@@ -96,6 +66,21 @@ local function advance_to_next_word(buf, from)
   local col = math.max(math.min(from[2], #line - 1), 0)
   vim.api.nvim_win_set_cursor(0, { row, col })
   vim.cmd("normal! w")
+end
+
+--- Move the cursor to the start of the line after `row` (1-indexed). A send of
+--- the last line leaves the cursor where it is. Same bail-out rules as
+--- `advance_to_next_word`.
+---@param buf integer
+---@param row integer
+local function advance_to_next_line(buf, row)
+  if vim.api.nvim_get_current_buf() ~= buf or vim.fn.mode() ~= "n" then
+    return
+  end
+  if row < 1 or row >= vim.api.nvim_buf_line_count(buf) then
+    return
+  end
+  vim.api.nvim_win_set_cursor(0, { row + 1, 0 })
 end
 
 --- Pick a device and send the given text to it.
@@ -118,9 +103,8 @@ local function send(text, on_sent)
 end
 
 --- Send the current visual selection to an Android device. The selection is
---- also copied to the system clipboard so a subsequent normal-mode send resends
---- the same text. Once the send succeeds the cursor moves to the word following
---- the selection.
+--- also copied to the system clipboard. Once the send succeeds the cursor moves
+--- to the word following the selection.
 function M.send_selection()
   local text = get_visual_selection()
   if text == "" then
@@ -135,13 +119,12 @@ function M.send_selection()
   end)
 end
 
---- Send text to an Android device from normal mode. Prefers the token under the
---- cursor (a word or a run of punctuation such as `.` or `:`); when the rest of
---- the line is blank, falls back to the system clipboard contents. A successful
---- send advances the cursor to the next token, so repeated presses walk through
---- the buffer.
+--- Send text to an Android device from normal mode. Sends the whole current
+--- line, wherever the cursor sits on it. A blank line falls back to the system
+--- clipboard. A successful send moves the cursor to the next line, so repeated
+--- presses walk down the buffer.
 function M.send_clipboard()
-  local text, end_col = token_under_cursor()
+  local text = current_line_text()
   if text == nil then
     local clipboard = vim.fn.getreg("+")
     if clipboard == nil or clipboard == "" then
@@ -154,7 +137,7 @@ function M.send_clipboard()
   local buf = vim.api.nvim_get_current_buf()
   local row = vim.api.nvim_win_get_cursor(0)[1]
   send(text, function()
-    advance_to_next_word(buf, { row, end_col })
+    advance_to_next_line(buf, row)
   end)
 end
 
