@@ -242,7 +242,7 @@ map({ "n", "i", "v", "x", "s", "t", "c" }, "<F2>", edit_changed_files, { desc = 
 -- otherwise miscomputes and crashes on (see lua/config/ui_select.lua).
 require("config.ui_select").setup()
 
--- Register the `:Pdf` (a commit's own changes), `:CompareHead` (HEAD vs a
+-- Register the `:Pdf` (local branch tip, branch~..branch), `:CompareHead` (HEAD vs a
 -- previous commit), `:EditDiff` (close other buffers, then open the files that
 -- differ from a base branch, with branch-name completion, defaults to
 -- origin/develop) and
@@ -342,8 +342,8 @@ map("n", "<F15>", next_diff_file, { desc = "Next File (Diffview)" })
 -- F5: pick a local branch (shell `lbr`) and check it out. Shift+F5 picks a
 -- remote branch (shell `rbr`). Each row shows when that branch was last
 -- committed and the commit message. The picker title, and the message after
--- checkout, show HEAD: the local branch and its remote, or detached at a
--- remote branch. From insert, visual, or a terminal we first drop to normal
+-- checkout, show the HEAD branch name, such as foo. A detached checkout at
+-- origin/foo is shown as foo. From insert, visual, or a terminal we first drop to normal
 -- with <C-\><C-N>, then open the picker. Terminals emit Shift+F5 as <F17>.
 -- A checkout that moves HEAD closes every open file.
 local function switch_branch(remote)

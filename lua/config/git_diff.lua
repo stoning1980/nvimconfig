@@ -1,5 +1,5 @@
 -- Diffview review commands:
---   :Pdf          show one commit's own changes (Tab: last 20 commits incl. HEAD)
+--   :Pdf          show a local branch's tip commit (branch~..branch; no arg: picker)
 --   :CompareHead  compare HEAD with a previous commit (Tab: last 20 ancestors)
 --   :EditDiff     close other buffers, then open every file differing from a
 --                 base branch (Tab: ordered branches, defaults to origin/develop;
@@ -40,6 +40,16 @@ end
 
 -- Local branches, newest-committed first. Cheap: a repo has few of them.
 local LOCALS_ARGS = { "git", "for-each-ref", "--sort=-committerdate", "--format=%(refname:short)", "refs/heads/" }
+
+-- Same branches, with relative time and subject, for the :Pdf picker. The
+-- trailing field stays even when the subject is empty so the row still parses.
+local LOCAL_DETAIL_ARGS = {
+  "git",
+  "for-each-ref",
+  "--sort=-committerdate",
+  "--format=%(refname:short)\t%(committerdate:relative)\t%(subject)",
+  "refs/heads/",
+}
 
 -- Which PRIORITY_REMOTES exist. Asking for those refs by name keeps this to one
 -- cheap for-each-ref no matter how many remote branches the repo has.
@@ -180,6 +190,23 @@ local function git_async(args, done)
   end)
 end
 
+-- Like git_async, but leaves each line untrimmed. for-each-ref rows end in a
+-- tab when the subject is empty; trimming that tab makes the row unparsable.
+local function git_raw_async(args, done)
+  vim.system(args, { text = true }, function(res)
+    local lines = nil
+    if res.code == 0 then
+      lines = {}
+      for line in (res.stdout or ""):gmatch("[^\r\n]+") do
+        table.insert(lines, line)
+      end
+    end
+    vim.schedule(function()
+      done(lines)
+    end)
+  end)
+end
+
 -- List branches without blocking, handing the same ordered list to `cb`.
 --
 -- Prefer this wherever a callback will do. Even though the queries themselves
@@ -304,17 +331,147 @@ local function parse_commit(arg, skip)
   return arg:match("^%S+")
 end
 
--- Completion for `:Pdf` — the last 20 commits, HEAD included.
-function M.complete_commits()
-  return commit_items(0)
+-- Completion for `:Pdf` — every local branch, newest-committed first. The
+-- "(001)" prefix keeps blink.cmp from re-sorting the list alphabetically.
+function M.complete_local_branches()
+  local branches = git_lines(LOCALS_ARGS)
+  if not branches then
+    return {}
+  end
+  local items = {}
+  for i, name in ipairs(branches) do
+    items[i] = string.format("(%03d) %s", i, name)
+  end
+  return items
 end
 
--- Show a single commit's own changes, i.e. its parent diffed against it.
+-- Branch name from a `:Pdf` argument. nil when nothing was given, so the
+-- caller opens the picker. A completion item is "(NNN) <branch>".
+---@param arg string?
+---@return string?
+function M.local_branch_arg(arg)
+  if type(arg) ~= "string" then
+    return nil
+  end
+  arg = vim.trim(arg)
+  if arg == "" then
+    return nil
+  end
+  return arg:match("^%(%d+%)%s+(.+)$") or arg
+end
+
+-- Diffview range for one branch's tip commit: that commit against its parent.
+---@param branch string
+---@return string
+function M.branch_tip_range(branch)
+  return branch .. "~.." .. branch
+end
+
+local function open_branch_tip_picker(lines, head)
+  local items = require("config.git_branch").branch_items(lines, { remote = false, head = head })
+  if #items == 0 then
+    notify("No local branches", vim.log.levels.WARN)
+    return
+  end
+
+  local function choose(branch)
+    if type(branch) ~= "string" or branch == "" then
+      return
+    end
+    vim.schedule(function()
+      open(M.branch_tip_range(branch))
+    end)
+  end
+
+  local title = "Branch tip"
+  if head and head ~= "" and head ~= "HEAD" then
+    title = title .. "  ·  HEAD " .. head
+  end
+
+  if Snacks and Snacks.picker then
+    -- Same wide, preview-less list as :GitBranch: the time and subject are on
+    -- the row, and selecting opens branch~..branch in Diffview.
+    Snacks.picker.pick({
+      source = "git_branch",
+      items = items,
+      format = "text",
+      title = title,
+      preview = "none",
+      layout = {
+        hidden = { "preview" },
+        layout = {
+          backdrop = false,
+          width = 0.9,
+          min_width = 90,
+          height = 0.6,
+          min_height = 10,
+          box = "vertical",
+          border = true,
+          title = "{title}",
+          title_pos = "center",
+          { win = "input", height = 1, border = "bottom" },
+          { win = "list", border = "none" },
+        },
+      },
+      confirm = function(picker, item)
+        picker:close()
+        if item then
+          choose(item.branch)
+        end
+      end,
+    })
+    return
+  end
+
+  vim.ui.select(items, {
+    prompt = title,
+    format_item = function(item)
+      return item.text
+    end,
+  }, function(choice)
+    if choice then
+      choose(choice.branch)
+    end
+  end)
+end
+
+-- List every local branch and open the picked tip in Diffview.
+function M.pick_branch_tip()
+  local results = {}
+  local pending = 2
+  local function finish()
+    pending = pending - 1
+    if pending > 0 then
+      return
+    end
+    if not results.lines then
+      notify("Failed to list branches (not a git repo?)", vim.log.levels.ERROR)
+      return
+    end
+    local head = results.head and results.head[1] or nil
+    open_branch_tip_picker(results.lines, head)
+  end
+  git_raw_async(LOCAL_DETAIL_ARGS, function(lines)
+    results.lines = lines
+    finish()
+  end)
+  git_async({ "git", "rev-parse", "--abbrev-ref", "HEAD" }, function(lines)
+    results.head = lines
+    finish()
+  end)
+end
+
+-- Show the tip commit of a local branch (`branch~..branch`).
 --
--- With no argument, uses HEAD (HEAD~1..HEAD).
-function M.diff_commit(arg)
-  local rev = (arg and arg ~= "" and parse_commit(arg, 0)) or "HEAD"
-  open(rev .. "~1.." .. rev)
+-- With no argument, lists every local branch and opens the one you pick. An
+-- argument is a branch name or a "(NNN) <branch>" completion item.
+function M.diff_branch_tip(arg)
+  local branch = M.local_branch_arg(arg)
+  if not branch then
+    M.pick_branch_tip()
+    return
+  end
+  open(M.branch_tip_range(branch))
 end
 
 -- Completion for `:CompareHead` — the last 20 ancestor commits of HEAD (HEAD
@@ -945,13 +1102,13 @@ end
 
 function M.setup()
   vim.api.nvim_create_user_command("Pdf", function(opts)
-    M.diff_commit(opts.args)
+    M.diff_branch_tip(opts.args)
   end, {
     nargs = "*",
     complete = function()
-      return M.complete_commits()
+      return M.complete_local_branches()
     end,
-    desc = "Diffview: show a commit's own changes (parent vs commit)",
+    desc = "Diffview: show a local branch tip (branch~..branch)",
   })
 
   vim.api.nvim_create_user_command("CompareHead", function(opts)

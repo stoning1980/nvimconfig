@@ -107,9 +107,14 @@ assert_eq(
 )
 assert_eq(git_branch.head_summary({ head = "topic" }), "topic", "local branch with no remote")
 assert_eq(
-  git_branch.head_summary({ head = "HEAD", detached_at = "origin/topic" }),
-  "detached at origin/topic",
-  "detached at a remote branch"
+  git_branch.head_summary({ head = "HEAD", detached_at = "origin/foo" }),
+  "foo",
+  "detached at origin/foo is the branch name"
+)
+assert_eq(
+  git_branch.head_summary({ head = "HEAD", detached_at = "origin/feature/foo" }),
+  "feature/foo",
+  "a nested remote ref keeps the branch path"
 )
 assert_eq(git_branch.head_summary({ head = "HEAD" }), "detached", "detached with no remote name")
 assert_eq(git_branch.head_summary({}), nil, "unknown HEAD")

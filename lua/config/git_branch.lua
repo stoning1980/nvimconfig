@@ -7,8 +7,8 @@
 --
 -- Each row is the branch, how long ago it was committed, and that commit's
 -- subject — the same kind of one-line menu entry F1 uses for recent commits.
--- The picker title, and the message after a checkout, name the current HEAD:
--- the local branch and the remote it tracks, or detached at a remote branch.
+-- The picker title, and the message after a checkout, name the current HEAD
+-- branch, such as `foo`. A detached checkout at `origin/foo` is shown as `foo`.
 --
 -- A checkout that does not move HEAD leaves every buffer alone. A checkout
 -- that does closes tabs, files, terminals, and the CodeChat session, then
@@ -128,8 +128,10 @@ function M.head_summary(info)
   info = info or {}
   local head = info.head
   if head == "HEAD" then
-    if info.detached_at and info.detached_at ~= "" then
-      return "detached at " .. info.detached_at
+    local name = info.detached_at
+    if name and name ~= "" then
+      -- `origin/foo` and `origin/feature/foo` become the branch name.
+      return name:match("^[^/]+/(.+)$") or name
     end
     return "detached"
   end
@@ -232,7 +234,7 @@ local function git_message(res)
 end
 
 --- Ask git where HEAD is, then call `cb` with a summary (`main → origin/main`,
---- `detached at origin/main`) or nil when the status cannot be read.
+--- or `foo` when detached at `origin/foo`) or nil when the status cannot be read.
 ---@param cwd string
 ---@param cb fun(summary: string?)
 local function describe_head(cwd, cb)
@@ -272,7 +274,7 @@ end
 
 --- Check out `branch` in `cwd`. On a real switch, close open files, tabs,
 --- terminals, and the CodeChat session, then show the dashboard. The result
---- names HEAD: local branch and its remote, or detached at a remote branch.
+--- names the HEAD branch. A detached checkout at `origin/foo` is shown as `foo`.
 ---@param cwd string
 ---@param branch string
 ---@param head string?
