@@ -11,8 +11,8 @@
 -- │ S-F3    : n → next file entry (Diffview only)                        │
 -- │ S-F4    : n → toggle git annotate panel (per-line author/date)       │
 -- │ F4      : n → resume last Snacks picker search                       │
--- │ F5      : all modes → local branch, then close files and session     │
--- │ S-F5    : all modes → remote branch, then close files and session    │
+-- │ F5      : all modes → local branch, show HEAD, close session         │
+-- │ S-F5    : all modes → remote branch, show HEAD, close session        │
 -- │ F6      : n/i/t/c → :GitGrep (git-tracked) | v/s → grep selection    │
 -- │ F7      : n → grep open buffers  |  v → grep selection in buffers    │
 -- │ F8      : v → send selection | n → send buffered files (claudeide)   │
@@ -341,9 +341,11 @@ map("n", "<F15>", next_diff_file, { desc = "Next File (Diffview)" })
 
 -- F5: pick a local branch (shell `lbr`) and check it out. Shift+F5 picks a
 -- remote branch (shell `rbr`). Each row shows when that branch was last
--- committed and the commit message. From insert, visual, or a terminal we
--- first drop to normal with <C-\><C-N>, then open the picker. Terminals emit
--- Shift+F5 as <F17>. A checkout that moves HEAD closes every open file.
+-- committed and the commit message. The picker title, and the message after
+-- checkout, show HEAD: the local branch and its remote, or detached at a
+-- remote branch. From insert, visual, or a terminal we first drop to normal
+-- with <C-\><C-N>, then open the picker. Terminals emit Shift+F5 as <F17>.
+-- A checkout that moves HEAD closes every open file.
 local function switch_branch(remote)
   return function()
     local function open()

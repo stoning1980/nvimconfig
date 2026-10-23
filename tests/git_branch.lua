@@ -14,11 +14,7 @@ end
 
 assert_eq(git_branch.remote_checkout_name("  origin/develop"), "origin/develop", "plain remote")
 assert_eq(git_branch.remote_checkout_name("  origin/feature/foo"), "origin/feature/foo", "nested remote")
-assert_eq(
-  git_branch.remote_checkout_name("  origin/HEAD -> origin/main"),
-  "origin/main",
-  "HEAD alias keeps the target"
-)
+assert_eq(git_branch.remote_checkout_name("  origin/HEAD -> origin/main"), "origin/main", "HEAD alias keeps the target")
 assert_eq(
   git_branch.remote_checkout_name("  remotes/origin/feature/bar"),
   "feature/bar",
@@ -82,5 +78,40 @@ assert_eq(
   },
   "local list de-duplicates, marks HEAD, and shows time plus subject"
 )
+
+assert_eq(
+  git_branch.parse_branch_status({
+    "# branch.oid abc",
+    "# branch.head main",
+    "# branch.upstream origin/main",
+    "# branch.ab +0 -0",
+  }),
+  { head = "main", upstream = "origin/main" },
+  "status names the local branch and its remote"
+)
+assert_eq(
+  git_branch.parse_branch_status({ "# branch.head (detached)", "# branch.oid abc" }),
+  { head = "HEAD", upstream = nil },
+  "a detached HEAD is HEAD"
+)
+assert_eq(
+  git_branch.prefer_remote_ref({ "upstream/topic", "origin/HEAD", "origin/topic" }),
+  "origin/topic",
+  "prefer origin"
+)
+assert_eq(git_branch.prefer_remote_ref({ "origin/HEAD" }), nil, "symbolic HEAD is not a branch")
+assert_eq(
+  git_branch.head_summary({ head = "main", upstream = "origin/main" }),
+  "main → origin/main",
+  "local branch and its remote"
+)
+assert_eq(git_branch.head_summary({ head = "topic" }), "topic", "local branch with no remote")
+assert_eq(
+  git_branch.head_summary({ head = "HEAD", detached_at = "origin/topic" }),
+  "detached at origin/topic",
+  "detached at a remote branch"
+)
+assert_eq(git_branch.head_summary({ head = "HEAD" }), "detached", "detached with no remote name")
+assert_eq(git_branch.head_summary({}), nil, "unknown HEAD")
 
 print("ok")

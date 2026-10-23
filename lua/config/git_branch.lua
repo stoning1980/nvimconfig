@@ -7,6 +7,8 @@
 --
 -- Each row is the branch, how long ago it was committed, and that commit's
 -- subject — the same kind of one-line menu entry F1 uses for recent commits.
+-- The picker title, and the message after a checkout, name the current HEAD:
+-- the local branch and the remote it tracks, or detached at a remote branch.
 --
 -- A checkout that does not move HEAD leaves every buffer alone. A checkout
 -- that does closes tabs, files, terminals, and the CodeChat session, then
@@ -80,6 +82,64 @@ function M.format_branch(entry, current, name_w)
     text = text .. "  " .. entry.subject
   end
   return text
+end
+
+--- `git status --porcelain=v2 --branch` header. `(detached)` becomes `HEAD`,
+--- matching `rev-parse --abbrev-ref HEAD`.
+---@param lines string[]
+---@return { head: string?, upstream: string? }
+function M.parse_branch_status(lines)
+  local head, upstream
+  for _, line in ipairs(lines or {}) do
+    local parsed_head = line:match("^# branch%.head (.+)$")
+    if parsed_head then
+      head = parsed_head == "(detached)" and "HEAD" or parsed_head
+    end
+    local parsed_upstream = line:match("^# branch%.upstream (.+)$")
+    if parsed_upstream then
+      upstream = parsed_upstream
+    end
+  end
+  return { head = head, upstream = upstream }
+end
+
+--- A remote ref that points at a detached HEAD. Prefer `origin/` when several
+--- remotes contain the same commit. Symbolic `origin/HEAD` is not a branch.
+---@param names string[]?
+---@return string?
+function M.prefer_remote_ref(names)
+  local best
+  for _, name in ipairs(names or {}) do
+    if name ~= "" and name ~= "HEAD" and not name:match("/HEAD$") then
+      if name:match("^origin/") then
+        return name
+      end
+      best = best or name
+    end
+  end
+  return best
+end
+
+--- One line for the picker title and the checkout message. nil when HEAD is
+--- unknown.
+---@param info { head: string?, upstream: string?, detached_at: string? }
+---@return string?
+function M.head_summary(info)
+  info = info or {}
+  local head = info.head
+  if head == "HEAD" then
+    if info.detached_at and info.detached_at ~= "" then
+      return "detached at " .. info.detached_at
+    end
+    return "detached"
+  end
+  if not head or head == "" then
+    return nil
+  end
+  if info.upstream and info.upstream ~= "" then
+    return head .. " → " .. info.upstream
+  end
+  return head
 end
 
 ---@param lines string[]
@@ -171,14 +231,56 @@ local function git_message(res)
   return msg
 end
 
+--- Ask git where HEAD is, then call `cb` with a summary (`main → origin/main`,
+--- `detached at origin/main`) or nil when the status cannot be read.
+---@param cwd string
+---@param cb fun(summary: string?)
+local function describe_head(cwd, cb)
+  git_lines(cwd, { "status", "--porcelain=v2", "--branch" }, function(lines)
+    if not lines then
+      cb(nil)
+      return
+    end
+    local info = M.parse_branch_status(lines)
+    if info.head ~= "HEAD" then
+      cb(M.head_summary(info))
+      return
+    end
+    git_lines(cwd, {
+      "for-each-ref",
+      "--points-at",
+      "HEAD",
+      "--format=%(refname:short)",
+      "refs/remotes",
+    }, function(refs)
+      info.detached_at = M.prefer_remote_ref(refs or {})
+      cb(M.head_summary(info))
+    end)
+  end)
+end
+
+--- `where` is the HEAD summary when git can name it, otherwise the branch that
+--- was requested.
+---@param cwd string
+---@param branch string
+---@param cb fun(where: string)
+local function head_where(cwd, branch, cb)
+  describe_head(cwd, function(summary)
+    cb(summary or branch)
+  end)
+end
+
 --- Check out `branch` in `cwd`. On a real switch, close open files, tabs,
---- terminals, and the CodeChat session, then show the dashboard.
+--- terminals, and the CodeChat session, then show the dashboard. The result
+--- names HEAD: local branch and its remote, or detached at a remote branch.
 ---@param cwd string
 ---@param branch string
 ---@param head string?
 function M.checkout(cwd, branch, head)
   if head and branch == head then
-    notify("Already on " .. branch)
+    head_where(cwd, branch, function(where)
+      notify("Already on " .. where)
+    end)
     return
   end
   if not require("config.goto").confirm_discard("Switch branch?") then
@@ -197,16 +299,20 @@ function M.checkout(cwd, branch, head)
       -- `git checkout` of the branch already checked out exits 0 and prints
       -- "Already on". That is not a switch, so the open files stay.
       if msg:find("Already on", 1, true) then
-        notify("Already on " .. branch)
+        head_where(cwd, branch, function(where)
+          notify("Already on " .. where)
+        end)
         return
       end
       local wiped, err = require("config.goto").wipe_editor()
-      if wiped then
-        notify("Switched to " .. branch)
-      else
-        local why = (err and err ~= "in progress") and (": " .. err) or ""
-        notify("Switched to " .. branch .. "; open files are still open" .. why, vim.log.levels.WARN)
-      end
+      head_where(cwd, branch, function(where)
+        if wiped then
+          notify("Switched to " .. where)
+        else
+          local why = (err and err ~= "in progress") and (": " .. err) or ""
+          notify("Switched to " .. where .. "; open files are still open" .. why, vim.log.levels.WARN)
+        end
+      end)
     end)
   end)
 end
@@ -216,7 +322,8 @@ end
 ---@param lines string[]
 ---@param head string?
 ---@param upstream string?
-local function open_picker(cwd, remote, lines, head, upstream)
+---@param summary string?
+local function open_picker(cwd, remote, lines, head, upstream, summary)
   local items = M.branch_items(lines, { remote = remote, head = head, upstream = upstream })
   if #items == 0 then
     notify(remote and "No remote branches" or "No local branches", vim.log.levels.WARN)
@@ -234,6 +341,9 @@ local function open_picker(cwd, remote, lines, head, upstream)
   end
 
   local title = remote and "Remote branch" or "Local branch"
+  if summary and summary ~= "" then
+    title = title .. "  ·  HEAD " .. summary
+  end
   if Snacks and Snacks.picker then
     -- Wide list, no preview: the time and subject need the row, the way F1's
     -- menu puts the commit subject on the row itself.
@@ -300,34 +410,57 @@ function M.pick(opts)
       "--format=" .. REF_FORMAT,
     }
 
-    local lines, list_err, head, upstream
-    local pending = remote and 3 or 2
+    local lines, list_err
+    local info = {}
+    local pending = 2
+    local function open()
+      if list_err then
+        notify(list_err, vim.log.levels.ERROR)
+        return
+      end
+      local function show(detached_at)
+        local summary = M.head_summary({
+          head = info.head,
+          upstream = info.upstream,
+          detached_at = detached_at,
+        })
+        -- A detached checkout still marks the remote branch it sits on.
+        local mark = info.upstream or detached_at
+        open_picker(cwd, remote, lines or {}, info.head, mark, summary)
+      end
+      if info.head == "HEAD" then
+        git_lines(cwd, {
+          "for-each-ref",
+          "--points-at",
+          "HEAD",
+          "--format=%(refname:short)",
+          "refs/remotes",
+        }, function(refs)
+          show(M.prefer_remote_ref(refs or {}))
+        end)
+        return
+      end
+      show(nil)
+    end
+
     local function done()
       pending = pending - 1
       if pending > 0 then
         return
       end
-      if list_err then
-        notify(list_err, vim.log.levels.ERROR)
-        return
-      end
-      open_picker(cwd, remote, lines or {}, head, upstream)
+      open()
     end
 
     git_lines(cwd, list_args, function(result, err)
       lines, list_err = result, err
       done()
     end)
-    git_text(cwd, { "rev-parse", "--abbrev-ref", "HEAD" }, function(text)
-      head = text
+    git_lines(cwd, { "status", "--porcelain=v2", "--branch" }, function(status_lines)
+      if status_lines then
+        info = M.parse_branch_status(status_lines)
+      end
       done()
     end)
-    if remote then
-      git_text(cwd, { "rev-parse", "--abbrev-ref", "@{upstream}" }, function(text)
-        upstream = text
-        done()
-      end)
-    end
   end)
 end
 
