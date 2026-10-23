@@ -33,27 +33,58 @@ local function get_visual_selection()
   return table.concat(lines, "\n")
 end
 
---- The current line, when it contains something other than blanks. A blank line
---- returns nil so the caller can fall back to the clipboard.
----@return string?
-local function current_line_text()
-  local line = vim.api.nvim_get_current_line()
-  for _, ch in ipairs(vim.fn.split(line, "\\zs")) do
-    if vim.fn.charclass(ch) ~= 0 then
-      return line
+--- Find the WORD under the cursor: a run of non-blank characters, the same
+--- grouping as the `W` motion. Blanks are skipped forward, so a cursor sitting
+--- on the gap between two addresses sends the next one. `<cword>` is not used
+--- because it stops at punctuation and would split `a21740test0+133@gmail.com`.
+---@return string? text, integer? end_col byte column (0-indexed) of the last character
+local function word_under_cursor()
+  local col = vim.api.nvim_win_get_cursor(0)[2]
+  local chars = vim.fn.split(vim.api.nvim_get_current_line(), "\\zs")
+  local offsets, byte = {}, 0
+  for i, ch in ipairs(chars) do
+    offsets[i] = byte
+    byte = byte + #ch
+  end
+
+  local function is_blank(ch)
+    return vim.fn.charclass(ch) == 0
+  end
+
+  local idx
+  for i = 1, #chars do
+    if col < offsets[i] + #chars[i] then
+      idx = i
+      break
     end
   end
-  return nil
+  while idx and is_blank(chars[idx]) do
+    idx = idx < #chars and idx + 1 or nil
+  end
+  if not idx then
+    return nil, nil
+  end
+
+  local first, last = idx, idx
+  while first > 1 and not is_blank(chars[first - 1]) do
+    first = first - 1
+  end
+  while last < #chars and not is_blank(chars[last + 1]) do
+    last = last + 1
+  end
+  return table.concat(chars, "", first, last), offsets[last]
 end
 
---- Move the cursor to the start of the word following `from` ({row, col} with a
+--- Move the cursor to the start of the next word after `from` ({row, col} with a
 --- 1-indexed row and 0-indexed col). `from` must be the last character of the
---- selection just sent, or the walk lands inside it. This runs once the send
+--- text just sent, or the walk sends it again. `motion` is `W` after a
+--- normal-mode WORD and `w` after a visual selection. This runs once the send
 --- has finished, so it bails out when the user has moved on to another buffer
 --- or is no longer in normal mode.
 ---@param buf integer buffer the text was sent from
 ---@param from integer[]
-local function advance_to_next_word(buf, from)
+---@param motion "w"|"W"
+local function advance_to_next_word(buf, from, motion)
   if vim.api.nvim_get_current_buf() ~= buf or vim.fn.mode() ~= "n" then
     return
   end
@@ -65,22 +96,7 @@ local function advance_to_next_word(buf, from)
   -- The '> mark uses v:maxcol for linewise selections, so clamp it.
   local col = math.max(math.min(from[2], #line - 1), 0)
   vim.api.nvim_win_set_cursor(0, { row, col })
-  vim.cmd("normal! w")
-end
-
---- Move the cursor to the start of the line after `row` (1-indexed). A send of
---- the last line leaves the cursor where it is. Same bail-out rules as
---- `advance_to_next_word`.
----@param buf integer
----@param row integer
-local function advance_to_next_line(buf, row)
-  if vim.api.nvim_get_current_buf() ~= buf or vim.fn.mode() ~= "n" then
-    return
-  end
-  if row < 1 or row >= vim.api.nvim_buf_line_count(buf) then
-    return
-  end
-  vim.api.nvim_win_set_cursor(0, { row + 1, 0 })
+  vim.cmd("normal! " .. motion)
 end
 
 --- Pick a device and send the given text to it.
@@ -102,42 +118,34 @@ local function send(text, on_sent)
   end)
 end
 
---- Send the current visual selection to an Android device. The selection is
---- also copied to the system clipboard. Once the send succeeds the cursor moves
---- to the word following the selection.
+--- Send the current visual selection to an Android device. Once the send
+--- succeeds the cursor moves to the word following the selection.
 function M.send_selection()
   local text = get_visual_selection()
   if text == "" then
     vim.notify("No text selected", vim.log.levels.WARN, { title = "AdbHelper" })
     return
   end
-  vim.fn.setreg("+", text)
   local buf = vim.api.nvim_get_current_buf()
   local selection_end = vim.api.nvim_buf_get_mark(0, ">")
   send(text, function()
-    advance_to_next_word(buf, selection_end)
+    advance_to_next_word(buf, selection_end, "w")
   end)
 end
 
---- Send text to an Android device from normal mode. Sends the whole current
---- line, wherever the cursor sits on it. A blank line falls back to the system
---- clipboard. A successful send moves the cursor to the next line, so repeated
---- presses walk down the buffer.
+--- Send the WORD under the cursor to an Android device. A WORD is a run of
+--- non-blank characters, so each address on a line is sent on its own. A
+--- successful send moves the cursor to the next WORD.
 function M.send_clipboard()
-  local text = current_line_text()
+  local text, end_col = word_under_cursor()
   if text == nil then
-    local clipboard = vim.fn.getreg("+")
-    if clipboard == nil or clipboard == "" then
-      vim.notify("No text to send", vim.log.levels.WARN, { title = "AdbHelper" })
-      return
-    end
-    send(clipboard)
+    vim.notify("No text to send", vim.log.levels.WARN, { title = "AdbHelper" })
     return
   end
   local buf = vim.api.nvim_get_current_buf()
   local row = vim.api.nvim_win_get_cursor(0)[1]
   send(text, function()
-    advance_to_next_line(buf, row)
+    advance_to_next_word(buf, { row, end_col }, "W")
   end)
 end
 
