@@ -24,7 +24,7 @@
 -- │ F11     : n → copy repo-rel path | v → repo-rel path + line range    │
 -- │ S-F11   : n/v/i → copy-path menu (abs / rel / name / ~)              │
 -- │ F12     : v → send selection | n → copy WORD to clipboard (adb)      │
--- │ S-F12   : n → Adb proxy menu (proxy on / proxy off)                  │
+-- │ S-F12   : n → Adb menu (A/B, relaunch, kill, clear, proxy)           │
 -- │ Note: terminals emit S-Fn as F(n+12): S-F1=F13 S-F12=F24 …           │
 -- │ Commands without a key: :DiffviewCycleLayout (side-by-side ↔ stacked)│
 -- │                         :DiffviewShowFile (this buffer in Diffview)  │
