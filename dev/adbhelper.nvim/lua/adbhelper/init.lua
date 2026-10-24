@@ -145,20 +145,21 @@ function M.send_clipboard()
 end
 
 --- Show the adb action menu. Device and app pickers follow the app actions.
---- Proxy on and proxy off apply to every connected device.
+--- Proxy on, proxy off, and proxy status come after those and apply to every
+--- connected device.
 function M.action_menu()
   local ui = require("adbhelper.ui")
   local actions = require("adbhelper.actions")
   local proxy = require("adbhelper.proxy")
-  local items = {
+  ui.select({
     { text = "A/B debug menu", action = "ab" },
     { text = "Relaunch app", action = "relaunch" },
     { text = "Kill TikTok family app", action = "kill" },
     { text = "Clear TikTok family app", action = "clear" },
     { text = "Proxy on", action = "proxy_on" },
     { text = "Proxy off", action = "proxy_off" },
-  }
-  ui.select(items, { title = "AdbHelper" }, function(item)
+    { text = "Proxy status", action = "proxy_status" },
+  }, { title = "AdbHelper" }, function(item)
     if not item then
       return
     end
@@ -166,6 +167,8 @@ function M.action_menu()
       proxy.on()
     elseif item.action == "proxy_off" then
       proxy.off()
+    elseif item.action == "proxy_status" then
+      proxy.status()
     else
       actions.run(item.action)
     end

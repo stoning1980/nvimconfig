@@ -9,8 +9,9 @@ return {
   -- F12: visual → send the selection to the Android device. Normal → copy the
   -- WORD under the cursor to the system clipboard and do not send it. A WORD
   -- runs until whitespace, so one address on a line is copied.
-  -- Shift+F12 opens the action menu; terminals emit shifted F12 as <F24>, so
-  -- map both spellings. Proxy on and proxy off sit after the app actions.
+  -- Shift+F12 opens the action menu. Proxy on, proxy off, and proxy status
+  -- follow the app actions. Terminals emit shifted F12 as <F24>, so both
+  -- spellings are mapped.
   keys = {
     { "<F12>", ":<C-u>AdbSendText<cr>", mode = "v", desc = "Send selection to Android device" },
     { "<F12>", "<cmd>AdbSendClipboard<cr>", mode = "n", desc = "Copy WORD under cursor to clipboard" },
@@ -28,6 +29,6 @@ return {
     end, { desc = "Copy WORD under cursor to the system clipboard" })
     vim.api.nvim_create_user_command("AdbMenu", function()
       adb.action_menu()
-    end, { desc = "AdbHelper: A/B debug, relaunch, kill, clear, proxy on, proxy off" })
+    end, { desc = "AdbHelper: A/B debug, relaunch, kill, clear, then proxy on/off/status" })
   end,
 }
