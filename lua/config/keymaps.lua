@@ -26,7 +26,7 @@
 -- │ F12     : v → send selection | n → copy WORD to clipboard (adb)      │
 -- │ S-F12   : n → AdbHelper action menu (A/B debug/relaunch/kill/clear)  │
 -- │ Note: terminals emit S-Fn as F(n+12): S-F1=F13 S-F12=F24 …           │
--- │ Commands without a key: :DiffviewToggleDirection (horiz. ↔ vertical) │
+-- │ Commands without a key: :DiffviewCycleLayout (side-by-side ↔ stacked)│
 -- │                         :DiffviewShowFile (this buffer in Diffview)  │
 -- └─────────────────────────────────────────────────────────────────────┘
 
@@ -212,115 +212,20 @@ local function edit_changed_files()
   vim.schedule(open)
 end
 
--- :DiffviewToggleDirection flips the Diffview opened by F1 between horizontal
--- (side by side, left/right) and vertical (stacked, top/bottom). A merge
--- conflict flips its three-pane pair the same way. Layouts with no opposite,
--- such as the mixed merge views, stay as they are.
-local direction_layouts = {
-  diff2_horizontal = { "diffview.scene.layouts.diff_2_hor", "Diff2Hor" },
-  diff2_vertical = { "diffview.scene.layouts.diff_2_ver", "Diff2Ver" },
-  diff3_horizontal = { "diffview.scene.layouts.diff_3_hor", "Diff3Hor" },
-  diff3_vertical = { "diffview.scene.layouts.diff_3_ver", "Diff3Ver" },
-}
-local opposite_direction = {
-  diff2_horizontal = "diff2_vertical",
-  diff2_vertical = "diff2_horizontal",
-  diff3_horizontal = "diff3_vertical",
-  diff3_vertical = "diff3_horizontal",
-}
-local direction_label = {
-  diff2_horizontal = "Horizontal",
-  diff2_vertical = "Vertical",
-  diff3_horizontal = "Horizontal",
-  diff3_vertical = "Vertical",
-}
-
-local function layout_name(entry)
-  local class = entry and entry.layout and entry.layout.class
-  return class and class.name
-end
-
-local function layout_class(name)
-  local spec = direction_layouts[name]
-  return require(spec[1])[spec[2]]
-end
-
--- Files that share the current entry's layout family, plus that entry.
-local function direction_files(view)
-  if view.panel and view.panel.list_files then
-    return view.panel:list_files(), view:cur_file()
-  end
-  local cur = view.cur_entry
-  if not cur then
-    return {}, nil
-  end
-  if cur.kind == "conflicting" then
-    return view.files.conflicting or {}, cur
-  end
-  local files = {}
-  local groups = view.panel and view.panel.files
-  for _, group in ipairs({ groups and groups.working, groups and groups.staged }) do
-    for _, file in ipairs(group or {}) do
-      files[#files + 1] = file
-    end
-  end
-  return files, cur
-end
-
-local function toggle_diffview_direction()
-  local view = diffview_view()
-  if not view then
+-- Toggle the current Diffview's layout between side-by-side (left/right) and
+-- stacked (top/bottom). On a normal two-file diff, including one opened with
+-- F1, that is the whole cycle. Reachable as `:DiffviewCycleLayout`.
+local function cycle_diffview_layout()
+  if not diffview_view() then
     vim.notify("No Diffview open", vim.log.levels.INFO, { title = "Diffview" })
     return
   end
-  local files, cur = direction_files(view)
-  if not cur then
-    vim.notify("No file open in this Diffview", vim.log.levels.INFO, { title = "Diffview" })
-    return
-  end
-  local next_name = opposite_direction[layout_name(cur)]
-  if not next_name then
-    vim.notify("This layout has no other direction", vim.log.levels.INFO, { title = "Diffview" })
-    return
-  end
-  local saw_cur = false
-  for _, entry in ipairs(files) do
-    if entry == cur then
-      saw_cur = true
-    end
-    local flipped = opposite_direction[layout_name(entry)]
-    if flipped then
-      entry:convert_layout(layout_class(flipped))
-    end
-  end
-  if not saw_cur then
-    cur:convert_layout(layout_class(next_name))
-  end
-  local main = view.cur_layout and view.cur_layout:get_main_win()
-  local pos, was_focused
-  if main and main.id and vim.api.nvim_win_is_valid(main.id) then
-    pos = vim.api.nvim_win_get_cursor(main.id)
-    was_focused = view.cur_layout:is_focused()
-  end
-  cur.layout.emitter:once("files_opened", function()
-    if pos and main and vim.api.nvim_win_is_valid(main.id) then
-      require("diffview.utils").set_cursor(main.id, unpack(pos))
-    end
-    if was_focused == false and view.cur_layout then
-      view.cur_layout:sync_scroll()
-    end
-  end)
-  view:set_file(cur, false)
-  local focused = view.cur_layout and view.cur_layout:get_main_win()
-  if was_focused and focused then
-    focused:focus()
-  end
-  vim.notify(direction_label[next_name], vim.log.levels.INFO, { title = "Diffview" })
+  require("diffview.actions").cycle_layout()
 end
 
-vim.api.nvim_create_user_command("DiffviewToggleDirection", toggle_diffview_direction, {
+vim.api.nvim_create_user_command("DiffviewCycleLayout", cycle_diffview_layout, {
   nargs = 0,
-  desc = "Toggle Diffview direction (horizontal ↔ vertical)",
+  desc = "Toggle Diffview layout (side-by-side ↔ stacked)",
 })
 
 -- F1: Toggle Diffview (picks a base when opening).
