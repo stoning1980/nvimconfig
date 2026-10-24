@@ -26,8 +26,7 @@
 -- │ F12     : v → send selection | n → copy WORD to clipboard (adb)      │
 -- │ S-F12   : n → AdbHelper action menu (A/B debug/relaunch/kill/clear)  │
 -- │ Note: terminals emit S-Fn as F(n+12): S-F1=F13 S-F12=F24 …           │
--- │ Commands without a key: :DiffviewCycleLayout (side-by-side ↔ stacked)│
--- │                         :DiffviewToggleDirection (horiz. ↔ vertical) │
+-- │ Commands without a key: :DiffviewToggleDirection (horiz. ↔ vertical) │
 -- │                         :DiffviewShowFile (this buffer in Diffview)  │
 -- └─────────────────────────────────────────────────────────────────────┘
 
@@ -212,23 +211,6 @@ local function edit_changed_files()
   vim.api.nvim_feedkeys(keys, "n", false)
   vim.schedule(open)
 end
-
--- Toggle the current Diffview's layout between side-by-side (left/right) and
--- stacked (top/bottom) — handy for long-line diffs. No-op when no Diffview open.
--- Reachable as `:DiffviewCycleLayout`; it has no key binding because <S-F2> now
--- opens Beyond Compare instead.
-local function cycle_diffview_layout()
-  if not diffview_view() then
-    vim.notify("No Diffview open", vim.log.levels.INFO, { title = "Diffview" })
-    return
-  end
-  require("diffview.actions").cycle_layout()
-end
-
-vim.api.nvim_create_user_command("DiffviewCycleLayout", cycle_diffview_layout, {
-  nargs = 0,
-  desc = "Toggle Diffview layout (side-by-side ↔ stacked)",
-})
 
 -- :DiffviewToggleDirection flips the Diffview opened by F1 between horizontal
 -- (side by side, left/right) and vertical (stacked, top/bottom). A merge
