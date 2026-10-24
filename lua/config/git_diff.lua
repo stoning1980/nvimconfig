@@ -5,8 +5,6 @@
 --                 base branch (Tab: ordered branches, defaults to origin/develop;
 --                 confirms past 20 files; skips AI tool directories)
 --   :CompareFiles diff two repo files picked from a fuzzy list (Tab to select two)
---   :DiffThisFile diff the focused file against a version (same branch list as
---                 :EditDiff, defaults to origin/develop)
 --   :CompareVersionFile pick a version (Tab to complete), then a file, to diff
 --                 HEAD's copy of that file against the chosen version's copy
 local M = {}
@@ -488,8 +486,8 @@ function M.diff_against_head(arg)
   open(rev .. "..HEAD")
 end
 
--- Completion for the branch-taking commands (`:EditDiff`, `:DiffThisFile`,
--- `:CompareVersionFile`) — the ordered branch list (see get_branches).
+-- Completion for the branch-taking commands (`:EditDiff`, `:CompareVersionFile`)
+-- — the ordered branch list (see get_branches).
 -- Each item is prefixed with a zero-padded index like "(001)" so blink.cmp's
 -- cmdline completion preserves our priority ordering (it sorts candidates
 -- alphabetically, and "(001)" < "(002)" < ... < "(100)"). Three digits keep the
@@ -807,7 +805,7 @@ local function close_other_buffers(paths)
   return true, scratch
 end
 
--- Base branch used when :EditDiff or :DiffThisFile is called without an argument.
+-- Base branch used when :EditDiff is called without an argument.
 local DEFAULT_BASE = "origin/develop"
 
 -- Repo-relative paths of the files changed in `range` (e.g. "HEAD~..HEAD" or
@@ -1028,78 +1026,6 @@ function M.compare_version_file(arg)
   })
 end
 
--- Absolute path of the file to act on: the current buffer when it holds a real
--- file, else the first file shown in any other window of this tab page. The
--- fallback keeps the command usable when focus sits on a non-file window (file
--- panel, terminal, outline). URI-scheme buffers (diffview://, fugitive://, …)
--- are skipped since they are views of a revision, not editable files.
-local function focused_file()
-  local function path_of(buf)
-    if vim.bo[buf].buftype ~= "" then
-      return nil
-    end
-    local name = vim.api.nvim_buf_get_name(buf)
-    if name == "" or name:find("^%a[%w+.-]*://") then
-      return nil
-    end
-    return vim.fn.fnamemodify(name, ":p")
-  end
-
-  local cur = path_of(vim.api.nvim_get_current_buf())
-  if cur then
-    return cur
-  end
-  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-    local path = path_of(vim.api.nvim_win_get_buf(win))
-    if path then
-      return path
-    end
-  end
-  return nil
-end
-
--- Diff the focused file against a version, in Diffview.
---
--- Like a <F1> branch pick narrowed to one file, and like :CompareVersionFile without
--- the file picker: the file is the one already in front of you. The argument is
--- a "(NN) <branch>" completion item (see complete_branches) or a raw revision;
--- with no argument the base is origin/develop. Diffview opens rev...HEAD
--- limited to that file, so the left side is the merge-base with rev and the
--- right side is HEAD.
-function M.diff_this_file(arg)
-  local root = repo_root()
-  if not root then
-    notify("Not a git repo", vim.log.levels.ERROR)
-    return
-  end
-
-  local file = focused_file()
-  if not file then
-    notify("No file to diff in this tab", vim.log.levels.WARN)
-    return
-  end
-  if file:sub(1, #root + 1) ~= root .. "/" then
-    notify("File is outside the repo: " .. file, vim.log.levels.WARN)
-    return
-  end
-
-  -- Strip the "(NN) " prefix from a completion item, if present.
-  local rev = DEFAULT_BASE
-  if arg and arg ~= "" then
-    rev = arg:match("^%(%d+%)%s+(.+)$") or arg:match("^%S+")
-  end
-
-  vim.cmd("DiffviewOpen " .. rev .. "...HEAD -- " .. vim.fn.fnameescape(file))
-
-  -- The file panel only ever lists the one file we asked for, so close it and
-  -- give the whole width to the diff. :DiffviewToggleFiles brings it
-  -- back. The panel is up by the time :DiffviewOpen returns.
-  local view = require("diffview.lib").get_current_view()
-  if view and view.panel and view.panel:is_open() then
-    view.panel:close()
-  end
-end
-
 function M.setup()
   vim.api.nvim_create_user_command("Pdf", function(opts)
     M.diff_branch_tip(opts.args)
@@ -1136,16 +1062,6 @@ function M.setup()
   end, {
     nargs = 0,
     desc = "Diff two working-tree files from this repo (picker)",
-  })
-
-  vim.api.nvim_create_user_command("DiffThisFile", function(opts)
-    M.diff_this_file(opts.args)
-  end, {
-    nargs = "*",
-    complete = function()
-      return M.complete_branches()
-    end,
-    desc = "Diffview: diff the focused file against a version (default origin/develop)",
   })
 
   vim.api.nvim_create_user_command("CompareVersionFile", function(opts)

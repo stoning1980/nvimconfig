@@ -242,11 +242,9 @@ map({ "n", "i", "v", "x", "s", "t", "c" }, "<F2>", edit_changed_files, { desc = 
 require("config.ui_select").setup()
 
 -- Register the `:Pdf` (local branch tip, branch~..branch), `:CompareHead` (HEAD vs a
--- previous commit), `:EditDiff` (close other buffers, then open the files that
--- differ from a base branch, with branch-name completion, defaults to
--- origin/develop) and
--- `:DiffThisFile` (diff the focused file against a branch, same completion and
--- default) commands.
+-- previous commit), and `:EditDiff` (close other buffers, then open the files
+-- that differ from a base branch, with branch-name completion, defaults to
+-- origin/develop) commands.
 require("config.git_diff").setup()
 
 -- Make buffer switches (e.g. `,,`) inside a Diffview tab select that file in
