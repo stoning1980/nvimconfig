@@ -144,19 +144,20 @@ function M.send_clipboard()
   vim.notify("Copied to clipboard", vim.log.levels.INFO, { title = "AdbHelper" })
 end
 
---- Show the adb action menu (device/app pickers follow the chosen action).
-function M.action_menu()
-  local ui = require("adbhelper.ui")
-  local actions = require("adbhelper.actions")
-  local items = {
-    { text = "A/B debug menu", action = "ab" },
-    { text = "Relaunch app", action = "relaunch" },
-    { text = "Kill TikTok family app", action = "kill" },
-    { text = "Clear TikTok family app", action = "clear" },
-  }
-  ui.select(items, { title = "AdbHelper" }, function(item)
-    if item then
-      actions.run(item.action)
+--- Shift+F12: proxy on or proxy off, for every connected device.
+function M.proxy_menu()
+  local proxy = require("adbhelper.proxy")
+  vim.ui.select({
+    { text = "Proxy on", run = proxy.on },
+    { text = "Proxy off", run = proxy.off },
+  }, {
+    prompt = "Adb proxy",
+    format_item = function(item)
+      return item.text
+    end,
+  }, function(choice)
+    if choice then
+      choice.run()
     end
   end)
 end
