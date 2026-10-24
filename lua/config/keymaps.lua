@@ -8,7 +8,7 @@
 -- │ S-F1    : n → toggle Diffview file panel (:DiffviewToggleFiles)      │
 -- │ S-F2    : n → open current diff's two sides in Beyond Compare        │
 -- │ F3      : n → next diff hunk (Diffview only; error else)             │
--- │ S-F3    : n → next file entry (Diffview only)                        │
+-- │ S-F3    : n → next file (Diffview; error at end of list)             │
 -- │ S-F4    : n → toggle git annotate panel (per-line author/date)       │
 -- │ F4      : n → resume last Snacks picker search                       │
 -- │ F5      : all modes → local branch, show HEAD, close session         │
@@ -329,12 +329,62 @@ end, { desc = "Next Diff Hunk (Diffview)" })
 
 -- Shift+F3: jump to the next file entry in the Diffview (vs. next hunk on F3).
 -- Terminals may emit shifted F3 as <F15>. Only meaningful inside a Diffview.
+-- The last file stays put and reports an error; it does not wrap to the first.
+local function index_of(list, item)
+  for i, value in ipairs(list) do
+    if value == item then
+      return i
+    end
+  end
+end
+
+-- Files in panel order, plus the file currently open. Nil list means this view
+-- has no file panel we know how to walk.
+local function diff_file_list(view)
+  local panel = view.panel
+  if not panel then
+    return nil
+  end
+  if panel.ordered_file_list then
+    return panel:ordered_file_list(), panel.cur_file
+  end
+  if panel.entries then
+    local files = {}
+    for _, entry in ipairs(panel.entries) do
+      for _, file in ipairs(entry.files or {}) do
+        files[#files + 1] = file
+      end
+    end
+    local cur = panel.cur_item and panel.cur_item[2] or nil
+    return files, cur
+  end
+end
+
 local function next_diff_file()
-  if not diffview_view() then
+  local view = diffview_view()
+  if not view then
     vim.notify("Not in a Diffview", vim.log.levels.ERROR, { title = "Diffview" })
     return
   end
-  require("diffview.actions").select_next_entry()
+  local files, cur = diff_file_list(view)
+  if not files then
+    require("diffview.actions").select_next_entry()
+    return
+  end
+  local next_i
+  if not cur then
+    -- No current file opens the first entry, matching Diffview's own next-file.
+    next_i = #files > 0 and 1 or nil
+  else
+    local i = index_of(files, cur)
+    -- A step past the last file does not wrap back to the first.
+    next_i = i and i + vim.v.count1 or nil
+  end
+  if not next_i or next_i > #files then
+    vim.notify("End of file list", vim.log.levels.ERROR, { title = "Diffview" })
+    return
+  end
+  view:set_file(files[next_i], false, true)
 end
 map("n", "<S-F3>", next_diff_file, { desc = "Next File (Diffview)" })
 map("n", "<F15>", next_diff_file, { desc = "Next File (Diffview)" })
