@@ -89,33 +89,41 @@ local function line_chars(line)
   return chars, offsets
 end
 
---- Start of the next WORD after `from` ({row, col}). `col` is the 0-indexed
---- byte of a character inside the text just sent, or `v:maxcol` for a linewise
---- selection. The rest of that WORD is skipped, then whitespace.
+--- Byte column of the first WORD on `row`, or nil when that line is blank.
+--- A WORD starts at the first non-blank character, same grouping as `W`.
 ---@param buf integer
----@param from integer[]
----@return integer? row, integer? col
-local function next_word_pos(buf, from)
-  local row = from[1]
-  local line_count = vim.api.nvim_buf_line_count(buf)
-  if row < 1 or row > line_count then
-    return nil, nil
+---@param row integer 1-indexed
+---@return integer?
+local function first_word_col(buf, row)
+  if row < 1 or row > vim.api.nvim_buf_line_count(buf) then
+    return nil
   end
-
-  local function first_nonblank(r, start_idx, chars, offsets)
-    for i = start_idx, #chars do
-      if not is_blank_char(chars[i]) then
-        return r, offsets[i]
-      end
+  local line = vim.api.nvim_buf_get_lines(buf, row - 1, row, false)[1] or ""
+  local chars, offsets = line_chars(line)
+  for i = 1, #chars do
+    if not is_blank_char(chars[i]) then
+      return offsets[i]
     end
-    return nil, nil
   end
+  return nil
+end
 
+--- Byte column of the next WORD on `row` after `from_col`, or nil when the
+--- rest of the line is blank. `from_col` is the 0-indexed byte of a character
+--- inside the WORD just sent. Never looks at the following line.
+---@param buf integer
+---@param row integer
+---@param from_col integer
+---@return integer?
+local function next_word_col_on_line(buf, row, from_col)
+  if row < 1 or row > vim.api.nvim_buf_line_count(buf) then
+    return nil
+  end
   local line = vim.api.nvim_buf_get_lines(buf, row - 1, row, false)[1] or ""
   local chars, offsets = line_chars(line)
   local idx = #chars + 1
   for i = 1, #chars do
-    if from[2] < offsets[i] + #chars[i] then
+    if from_col < offsets[i] + #chars[i] then
       idx = i
       break
     end
@@ -123,29 +131,23 @@ local function next_word_pos(buf, from)
   while idx <= #chars and not is_blank_char(chars[idx]) do
     idx = idx + 1
   end
-
-  local found_row, found_col = first_nonblank(row, idx, chars, offsets)
-  if found_row then
-    return found_row, found_col
-  end
-  for r = row + 1, line_count do
-    local next_line = vim.api.nvim_buf_get_lines(buf, r - 1, r, false)[1] or ""
-    local next_chars, next_offsets = line_chars(next_line)
-    found_row, found_col = first_nonblank(r, 1, next_chars, next_offsets)
-    if found_row then
-      return found_row, found_col
+  for i = idx, #chars do
+    if not is_blank_char(chars[i]) then
+      return offsets[i]
     end
   end
-  return nil, nil
+  return nil
 end
 
---- Move `win` to the next WORD after `from`. Deferred one turn so a cursor
+--- After a WORD send, stay on `row`. Move to the next WORD on that line, or
+--- to its first WORD when nothing follows. Deferred one turn so a cursor
 --- restore from the adb callback cannot undo it. Skipped when the user has
 --- left this window's buffer.
 ---@param buf integer
 ---@param win integer
----@param from integer[]
-local function advance_to_next_word(buf, win, from)
+---@param row integer
+---@param end_col integer
+local function move_after_sent_word(buf, win, row, end_col)
   vim.schedule(function()
     if not vim.api.nvim_buf_is_valid(buf) or not vim.api.nvim_win_is_valid(win) then
       return
@@ -153,8 +155,8 @@ local function advance_to_next_word(buf, win, from)
     if vim.api.nvim_win_get_buf(win) ~= buf then
       return
     end
-    local row, col = next_word_pos(buf, from)
-    if not row or not col then
+    local col = next_word_col_on_line(buf, row, end_col) or first_word_col(buf, row)
+    if not col then
       return
     end
     vim.api.nvim_win_set_cursor(win, { row, col })
@@ -179,26 +181,24 @@ local function send(text, on_sent)
   end)
 end
 
---- Send the current visual selection to an Android device. Once any of the
---- send has landed, the cursor jumps to the next WORD after the selection.
+--- Send the current visual selection to an Android device. The text is sent
+--- with adb only; it is not copied to a register or the system clipboard.
+--- The cursor is left where it is.
 function M.send_selection()
   local text = get_visual_selection()
   if text == "" then
     vim.notify("No text selected", vim.log.levels.WARN, { title = "AdbHelper" })
     return
   end
-  local buf = vim.api.nvim_get_current_buf()
-  local win = vim.api.nvim_get_current_win()
-  local selection_end = vim.api.nvim_buf_get_mark(0, ">")
-  send(text, function()
-    advance_to_next_word(buf, win, selection_end)
-  end)
+  send(text)
 end
 
 --- Send the WORD under the cursor to an Android device. A WORD is a run of
 --- non-blank characters, so an address is sent whole. A cursor on whitespace
---- uses the next WORD on the line. Once any of the send has landed, the cursor
---- jumps to the WORD after the one that was sent.
+--- uses the next WORD on the line. The text is sent with adb only; it is not
+--- copied to a register or the system clipboard. Once any of the send has
+--- landed, the cursor stays on this line and moves to the next WORD, or to
+--- the first WORD when nothing follows on the line.
 function M.send_word()
   local text, end_col = word_under_cursor()
   if text == nil or end_col == nil then
@@ -209,7 +209,7 @@ function M.send_word()
   local win = vim.api.nvim_get_current_win()
   local row = vim.api.nvim_win_get_cursor(0)[1]
   send(text, function()
-    advance_to_next_word(buf, win, { row, end_col })
+    move_after_sent_word(buf, win, row, end_col)
   end)
 end
 

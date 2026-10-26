@@ -23,7 +23,7 @@
 -- │ S-F10   : n → clear all interestingwords marks                       │
 -- │ F11     : n → copy repo-rel path | v → repo-rel path + line range    │
 -- │ S-F11   : n/v/i → copy-path menu (abs / rel / name / ~)              │
--- │ F12     : v/n → send text, then jump to the next WORD (adb)          │
+-- │ F12     : n → next WORD, else first | v → send, stays (adb)          │
 -- │ S-F12   : n → Adb: A/B, relaunch, kill, clear, proxy on/off          │
 -- │ Note: terminals emit S-Fn as F(n+12): S-F1=F13 S-F12=F24 …           │
 -- │ Commands without a key: :DiffviewCycleLayout (side-by-side ↔ stacked)│
