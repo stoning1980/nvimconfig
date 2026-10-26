@@ -127,10 +127,10 @@ function M.off()
   end)
 end
 
---- Read `http_proxy` and `adb reverse --list` for one device, then call `done`.
+--- Read `http_proxy` and `adb reverse --list` for one device.
 ---@param serial string
----@param done fun()
-local function report(serial, done)
+---@param done fun(line: { serial: string, text: string, state: "on"|"off"|"other" })
+local function read_one(serial, done)
   local pending = 2
   local proxy_raw, reverse_raw, failed
   local function finish(kind, result)
@@ -146,12 +146,22 @@ local function report(serial, done)
       return
     end
     if failed and proxy_raw == nil then
-      notify(serial .. ": " .. (failed ~= "" and failed or "adb command failed"), vim.log.levels.WARN)
-    else
-      local reversed = (reverse_raw or ""):find(PORT, 1, true) ~= nil
-      notify(serial .. ": " .. describe(proxy_value(proxy_raw), reversed))
+      done({
+        serial = serial,
+        text = failed ~= "" and failed or "adb command failed",
+        state = "other",
+      })
+      return
     end
-    done()
+    local proxy = proxy_value(proxy_raw)
+    local reversed = (reverse_raw or ""):find(PORT, 1, true) ~= nil
+    local state = "other"
+    if proxy and reversed then
+      state = "on"
+    elseif not proxy and not reversed then
+      state = "off"
+    end
+    done({ serial = serial, text = describe(proxy, reversed), state = state })
   end
   run({ "adb", "-s", serial, "shell", "settings", "get", "global", "http_proxy" }, function(result)
     finish("proxy", result)
@@ -161,9 +171,31 @@ local function report(serial, done)
   end)
 end
 
---- Notify the proxy status of every connected device.
-function M.status()
-  each_device(report)
+--- Read the proxy status of every connected device. An empty list means none
+--- are connected. Does not notify.
+---@param callback fun(lines: { serial: string, text: string, state: "on"|"off"|"other" }[])
+function M.read(callback)
+  device.get_devices(function(devices)
+    if #devices == 0 then
+      callback({})
+      return
+    end
+    local lines = {}
+    local index = 1
+    local function next_device()
+      local serial = devices[index]
+      if not serial then
+        callback(lines)
+        return
+      end
+      index = index + 1
+      read_one(serial, function(line)
+        lines[#lines + 1] = line
+        next_device()
+      end)
+    end
+    next_device()
+  end)
 end
 
 return M

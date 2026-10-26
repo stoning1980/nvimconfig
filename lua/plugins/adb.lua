@@ -5,16 +5,16 @@ return {
   dir = vim.fn.stdpath("config") .. "/dev/adbhelper.nvim",
   name = "adbhelper.nvim",
   event = "VeryLazy",
-  cmd = { "AdbSendText", "AdbSendClipboard", "AdbMenu" },
-  -- F12: visual → send the selection to the Android device. Normal → copy the
-  -- WORD under the cursor to the system clipboard and do not send it. A WORD
-  -- runs until whitespace, so one address on a line is copied.
-  -- Shift+F12 opens the action menu. Proxy on, proxy off, and proxy status
-  -- follow the app actions. Terminals emit shifted F12 as <F24>, so both
-  -- spellings are mapped.
+  cmd = { "AdbSendText", "AdbSendWord", "AdbMenu" },
+  -- F12: visual → send the selection. Normal → send the WORD under the cursor.
+  -- Either way, a successful send jumps to the next WORD (whitespace, not
+  -- punctuation). A cursor on whitespace uses the next WORD.
+  -- Shift+F12 opens the action menu. Proxy on and proxy off follow the app
+  -- actions, and the menu marks which one is current. Terminals emit shifted
+  -- F12 as <F24>, so both spellings are mapped.
   keys = {
-    { "<F12>", ":<C-u>AdbSendText<cr>", mode = "v", desc = "Send selection to Android device" },
-    { "<F12>", "<cmd>AdbSendClipboard<cr>", mode = "n", desc = "Copy WORD under cursor to clipboard" },
+    { "<F12>", ":<C-u>AdbSendText<cr>", mode = "v", desc = "Send selection to Android device, then next WORD" },
+    { "<F12>", "<cmd>AdbSendWord<cr>", mode = "n", desc = "Send WORD under cursor to Android device" },
     { "<S-F12>", "<cmd>AdbMenu<cr>", mode = "n", desc = "AdbHelper action menu" },
     { "<F24>", "<cmd>AdbMenu<cr>", mode = "n", desc = "AdbHelper action menu" },
   },
@@ -24,11 +24,11 @@ return {
     vim.api.nvim_create_user_command("AdbSendText", function()
       adb.send_selection()
     end, { range = true, desc = "Send visual selection to Android device via adb" })
-    vim.api.nvim_create_user_command("AdbSendClipboard", function()
-      adb.send_clipboard()
-    end, { desc = "Copy WORD under cursor to the system clipboard" })
+    vim.api.nvim_create_user_command("AdbSendWord", function()
+      adb.send_word()
+    end, { desc = "Send WORD under cursor to Android device via adb" })
     vim.api.nvim_create_user_command("AdbMenu", function()
       adb.action_menu()
-    end, { desc = "AdbHelper: A/B debug, relaunch, kill, clear, then proxy on/off/status" })
+    end, { desc = "AdbHelper: A/B debug, relaunch, kill, clear, then proxy on/off" })
   end,
 }

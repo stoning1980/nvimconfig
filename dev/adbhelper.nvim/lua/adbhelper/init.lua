@@ -75,49 +75,112 @@ local function word_under_cursor()
   return table.concat(chars, "", first, last), offsets[last]
 end
 
---- Move the cursor to the start of the word after `from` ({row, col} with a
---- 1-indexed row and 0-indexed col). `from` must be the last character of the
---- visual selection just sent, or the walk lands inside it. This runs once the
---- send has finished, so it bails out when the user has moved on to another
---- buffer or is no longer in normal mode.
----@param buf integer buffer the text was sent from
+local function is_blank_char(ch)
+  return vim.fn.charclass(ch) == 0
+end
+
+local function line_chars(line)
+  local chars = vim.fn.split(line, "\\zs")
+  local offsets, byte = {}, 0
+  for i, ch in ipairs(chars) do
+    offsets[i] = byte
+    byte = byte + #ch
+  end
+  return chars, offsets
+end
+
+--- Start of the next WORD after `from` ({row, col}). `col` is the 0-indexed
+--- byte of a character inside the text just sent, or `v:maxcol` for a linewise
+--- selection. The rest of that WORD is skipped, then whitespace.
+---@param buf integer
 ---@param from integer[]
-local function advance_to_next_word(buf, from)
-  if vim.api.nvim_get_current_buf() ~= buf or vim.fn.mode() ~= "n" then
-    return
-  end
+---@return integer? row, integer? col
+local function next_word_pos(buf, from)
   local row = from[1]
-  if row < 1 or row > vim.api.nvim_buf_line_count(buf) then
-    return
+  local line_count = vim.api.nvim_buf_line_count(buf)
+  if row < 1 or row > line_count then
+    return nil, nil
   end
+
+  local function first_nonblank(r, start_idx, chars, offsets)
+    for i = start_idx, #chars do
+      if not is_blank_char(chars[i]) then
+        return r, offsets[i]
+      end
+    end
+    return nil, nil
+  end
+
   local line = vim.api.nvim_buf_get_lines(buf, row - 1, row, false)[1] or ""
-  -- The '> mark uses v:maxcol for linewise selections, so clamp it.
-  local col = math.max(math.min(from[2], #line - 1), 0)
-  vim.api.nvim_win_set_cursor(0, { row, col })
-  vim.cmd("normal! w")
+  local chars, offsets = line_chars(line)
+  local idx = #chars + 1
+  for i = 1, #chars do
+    if from[2] < offsets[i] + #chars[i] then
+      idx = i
+      break
+    end
+  end
+  while idx <= #chars and not is_blank_char(chars[idx]) do
+    idx = idx + 1
+  end
+
+  local found_row, found_col = first_nonblank(row, idx, chars, offsets)
+  if found_row then
+    return found_row, found_col
+  end
+  for r = row + 1, line_count do
+    local next_line = vim.api.nvim_buf_get_lines(buf, r - 1, r, false)[1] or ""
+    local next_chars, next_offsets = line_chars(next_line)
+    found_row, found_col = first_nonblank(r, 1, next_chars, next_offsets)
+    if found_row then
+      return found_row, found_col
+    end
+  end
+  return nil, nil
+end
+
+--- Move `win` to the next WORD after `from`. Deferred one turn so a cursor
+--- restore from the adb callback cannot undo it. Skipped when the user has
+--- left this window's buffer.
+---@param buf integer
+---@param win integer
+---@param from integer[]
+local function advance_to_next_word(buf, win, from)
+  vim.schedule(function()
+    if not vim.api.nvim_buf_is_valid(buf) or not vim.api.nvim_win_is_valid(win) then
+      return
+    end
+    if vim.api.nvim_win_get_buf(win) ~= buf then
+      return
+    end
+    local row, col = next_word_pos(buf, from)
+    if not row or not col then
+      return
+    end
+    vim.api.nvim_win_set_cursor(win, { row, col })
+  end)
 end
 
 --- Pick a device and send the given text to it.
 ---@param text string
----@param on_sent? fun() called only when every adb command succeeded
+---@param on_sent? fun() called when at least one adb command succeeded
 local function send(text, on_sent)
   local device = require("adbhelper.device")
   local input = require("adbhelper.input")
   device.pick_device(function(serial)
-    input.send_text(serial, text, function(ok)
-      if not ok then
-        return
+    input.send_text(serial, text, function(ok, any_ok)
+      if ok then
+        vim.notify("Text sent to " .. serial, vim.log.levels.INFO, { title = "AdbHelper" })
       end
-      vim.notify("Text sent to " .. serial, vim.log.levels.INFO, { title = "AdbHelper" })
-      if on_sent then
+      if (ok or any_ok) and on_sent then
         on_sent()
       end
     end)
   end)
 end
 
---- Send the current visual selection to an Android device. Once the send
---- succeeds the cursor moves to the word following the selection.
+--- Send the current visual selection to an Android device. Once any of the
+--- send has landed, the cursor jumps to the next WORD after the selection.
 function M.send_selection()
   local text = get_visual_selection()
   if text == "" then
@@ -125,53 +188,99 @@ function M.send_selection()
     return
   end
   local buf = vim.api.nvim_get_current_buf()
+  local win = vim.api.nvim_get_current_win()
   local selection_end = vim.api.nvim_buf_get_mark(0, ">")
   send(text, function()
-    advance_to_next_word(buf, selection_end)
+    advance_to_next_word(buf, win, selection_end)
   end)
 end
 
---- Copy the WORD under the cursor to the system clipboard. A WORD is a run of
---- non-blank characters, so the address under the cursor is copied on its own.
---- Nothing is sent to a device.
-function M.send_clipboard()
-  local text = word_under_cursor()
-  if text == nil then
-    vim.notify("No text to copy", vim.log.levels.WARN, { title = "AdbHelper" })
+--- Send the WORD under the cursor to an Android device. A WORD is a run of
+--- non-blank characters, so an address is sent whole. A cursor on whitespace
+--- uses the next WORD on the line. Once any of the send has landed, the cursor
+--- jumps to the WORD after the one that was sent.
+function M.send_word()
+  local text, end_col = word_under_cursor()
+  if text == nil or end_col == nil then
+    vim.notify("No text to send", vim.log.levels.WARN, { title = "AdbHelper" })
     return
   end
-  vim.fn.setreg("+", text)
-  vim.notify("Copied to clipboard", vim.log.levels.INFO, { title = "AdbHelper" })
+  local buf = vim.api.nvim_get_current_buf()
+  local win = vim.api.nvim_get_current_win()
+  local row = vim.api.nvim_win_get_cursor(0)[1]
+  send(text, function()
+    advance_to_next_word(buf, win, { row, end_col })
+  end)
+end
+
+--- Mark whichever proxy row matches every connected device.
+---@param lines { state: "on"|"off"|"other" }[]
+---@return string on_label, string off_label
+local function proxy_labels(lines)
+  local on_label, off_label = "Proxy on", "Proxy off"
+  local saw_on, saw_off, saw_other = false, false, false
+  for _, line in ipairs(lines) do
+    if line.state == "on" then
+      saw_on = true
+    elseif line.state == "off" then
+      saw_off = true
+    else
+      saw_other = true
+    end
+  end
+  if saw_on and not saw_off and not saw_other then
+    on_label = "Proxy on · current"
+  elseif saw_off and not saw_on and not saw_other then
+    off_label = "Proxy off · current"
+  end
+  return on_label, off_label
+end
+
+--- Title carries the reading, including a mismatch between the setting and the reverse.
+---@param lines { serial: string, text: string }[]
+---@return string
+local function menu_title(lines)
+  if #lines == 0 then
+    return "AdbHelper"
+  end
+  if #lines == 1 then
+    return "AdbHelper · " .. lines[1].text
+  end
+  local parts = {}
+  for _, line in ipairs(lines) do
+    parts[#parts + 1] = line.serial .. " " .. line.text
+  end
+  return "AdbHelper · " .. table.concat(parts, ", ")
 end
 
 --- Show the adb action menu. Device and app pickers follow the app actions.
---- Proxy on, proxy off, and proxy status come after those and apply to every
---- connected device.
+--- Proxy on and proxy off come after those, apply to every connected device,
+--- and the current reading is shown on the menu itself.
 function M.action_menu()
   local ui = require("adbhelper.ui")
   local actions = require("adbhelper.actions")
   local proxy = require("adbhelper.proxy")
-  ui.select({
-    { text = "A/B debug menu", action = "ab" },
-    { text = "Relaunch app", action = "relaunch" },
-    { text = "Kill TikTok family app", action = "kill" },
-    { text = "Clear TikTok family app", action = "clear" },
-    { text = "Proxy on", action = "proxy_on" },
-    { text = "Proxy off", action = "proxy_off" },
-    { text = "Proxy status", action = "proxy_status" },
-  }, { title = "AdbHelper" }, function(item)
-    if not item then
-      return
-    end
-    if item.action == "proxy_on" then
-      proxy.on()
-    elseif item.action == "proxy_off" then
-      proxy.off()
-    elseif item.action == "proxy_status" then
-      proxy.status()
-    else
-      actions.run(item.action)
-    end
+  proxy.read(function(lines)
+    local on_label, off_label = proxy_labels(lines)
+    ui.select({
+      { text = "A/B debug menu", action = "ab" },
+      { text = "Relaunch app", action = "relaunch" },
+      { text = "Kill TikTok family app", action = "kill" },
+      { text = "Clear TikTok family app", action = "clear" },
+      { text = on_label, action = "proxy_on" },
+      { text = off_label, action = "proxy_off" },
+    }, { title = menu_title(lines) }, function(item)
+      if not item then
+        return
+      end
+      if item.action == "proxy_on" then
+        proxy.on()
+      elseif item.action == "proxy_off" then
+        proxy.off()
+      else
+        actions.run(item.action)
+      end
+    end)
   end)
 end
 

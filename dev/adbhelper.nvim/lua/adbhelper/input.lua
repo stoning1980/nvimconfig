@@ -106,16 +106,18 @@ local function make_progress(total)
 end
 
 --- Run a list of commands sequentially (each waits for the prior). A failing
---- command does not abort the run, but is reported through `ok` at the end.
+--- command does not abort the run. `ok` is true only when every command
+--- succeeded; `any_ok` is true when at least one did.
 ---@param cmds string[][] list of argv tables
 ---@param idx number current index
 ---@param on_step fun(done: number) progress callback (commands completed)
----@param on_done fun(ok: boolean)
+---@param on_done fun(ok: boolean, any_ok: boolean)
 ---@param ok boolean whether every command so far succeeded
-local function run_sequential(cmds, idx, on_step, on_done, ok)
+---@param any_ok boolean whether any command so far succeeded
+local function run_sequential(cmds, idx, on_step, on_done, ok, any_ok)
   if idx > #cmds then
     if on_done then
-      on_done(ok)
+      on_done(ok, any_ok)
     end
     return
   end
@@ -124,9 +126,11 @@ local function run_sequential(cmds, idx, on_step, on_done, ok)
       if result.code ~= 0 then
         vim.notify("adb command failed: " .. (result.stderr or "unknown"), vim.log.levels.WARN, { title = "AdbHelper" })
         ok = false
+      else
+        any_ok = true
       end
       on_step(idx)
-      run_sequential(cmds, idx + 1, on_step, on_done, ok)
+      run_sequential(cmds, idx + 1, on_step, on_done, ok, any_ok)
     end)
   end)
 end
@@ -134,7 +138,7 @@ end
 --- Send text to a device, handling special characters.
 ---@param serial string device serial
 ---@param text string text to send
----@param on_done? fun(ok: boolean) called when all commands finish
+---@param on_done? fun(ok: boolean, any_ok: boolean) called when all commands finish
 function M.send_text(serial, text, on_done)
   if text == "" then
     vim.notify("No text to send", vim.log.levels.WARN, { title = "AdbHelper" })
@@ -149,12 +153,12 @@ function M.send_text(serial, text, on_done)
 
   local update, finish = make_progress(total)
   update(0)
-  run_sequential(cmds, 1, update, function(ok)
+  run_sequential(cmds, 1, update, function(ok, any_ok)
     finish()
     if on_done then
-      on_done(ok)
+      on_done(ok, any_ok)
     end
-  end, true)
+  end, true, false)
 end
 
 return M
