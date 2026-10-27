@@ -13,7 +13,7 @@
 -- │ F4      : n → resume last Snacks picker search                       │
 -- │ F5      : all modes → local branch, show HEAD, close session         │
 -- │ S-F5    : all modes → remote branch, show HEAD, close session        │
--- │ F6      : n → :GitGrep <cword> | i/t/c → empty | v/s → selection     │
+-- │ F6      : n/i/t/c → :GitGrep (git-tracked) | v/s → grep selection    │
 -- │ F7      : n → grep open buffers  |  v → grep selection in buffers    │
 -- │ F8      : v → send selection | n → send buffered files (claudeide)   │
 -- │ S-F8    : n → start Claude IDE server (auto_start off)               │
@@ -412,13 +412,12 @@ map({ "n", "i", "v", "x", "s", "t" }, "<F5>", switch_branch(false), { desc = "Sw
 map({ "n", "i", "v", "x", "s", "t" }, "<S-F5>", switch_branch(true), { desc = "Switch remote git branch" })
 map({ "n", "i", "v", "x", "s", "t" }, "<F17>", switch_branch(true), { desc = "Switch remote git branch" })
 
--- F6: :GitGrep — live grep over git-tracked files. Normal → the word under
--- the cursor (empty if there is none); insert/terminal/cmdline → empty
--- prompt; visual/select → seeded with the selection (first line, matched
--- literally).
+-- F6: :GitGrep — live grep over git-tracked files. Normal/insert/terminal/
+-- cmdline → empty prompt; visual/select → seeded with the selection (first
+-- line, matched literally).
 map("n", "<F6>", function()
-  require("config.git_grep").open({ search = vim.fn.expand("<cword>") })
-end, { desc = "Git Grep word under cursor" })
+  require("config.git_grep").open()
+end, { desc = "Git Grep" })
 
 map({ "i", "t", "c" }, "<F6>", function()
   -- Leave insert/terminal/cmdline first; scheduled so the cmdline has closed.
