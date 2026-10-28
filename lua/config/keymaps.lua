@@ -603,14 +603,10 @@ local function visual_selection_text()
   return region[1] or ""
 end
 
--- <leader><space>: find files whose filename equals the selection.
+-- <leader><space>: find files, pre-filtered by the selection (matches filename).
 map("x", "<leader><space>", function()
   local text = visual_selection_text()
-  local exact = require("config.exact_filename")
-  Snacks.picker.files({
-    cwd = exact.search_cwd(vim.uv.cwd(), LazyVim.root()),
-    pattern = text,
-  })
+  Snacks.picker.files({ pattern = text })
 end, { desc = "Find Files (selection)" })
 
 -- <leader>,: switch buffer, pre-filtered by the selection (matches buffer name).

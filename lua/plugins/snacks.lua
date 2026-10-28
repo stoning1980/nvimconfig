@@ -18,14 +18,6 @@ return {
       end,
       desc = "Recent (all history)",
     },
-    {
-      "<leader><space>",
-      function()
-        local exact = require("config.exact_filename")
-        Snacks.picker.files({ cwd = exact.search_cwd(vim.uv.cwd(), LazyVim.root()) })
-      end,
-      desc = "Find files by exact filename",
-    },
   },
   opts = {
     dashboard = {
@@ -66,36 +58,6 @@ return {
         },
       },
       sources = {
-        -- `<leader><space>` / `<leader>ff`: the query must equal the filename.
-        -- Fuzzy matching and directory names are not compared.
-        files = {
-          matcher = {
-            fuzzy = false,
-            -- Always ignore case. A capital letter in the query still matches.
-            smartcase = false,
-            ignorecase = true,
-          },
-          -- An empty query does not walk the tree. `fd` runs only after the
-          -- typed filename has stayed still for a moment.
-          finder = function(opts, ctx)
-            local exact = require("config.exact_filename")
-            if exact.fd_available() and (ctx.filter.search or "") == "" then
-              return {}
-            end
-            return require("snacks.picker.source.files").files(opts, ctx)
-          end,
-          transform = function(item)
-            local exact = require("config.exact_filename")
-            local file = item.file or item.text or ""
-            item.file = item.file or file
-            item.text = exact.item_text(file)
-          end,
-          filter = {
-            transform = function(picker, filter)
-              require("config.exact_filename").hold_fd(picker, filter)
-            end,
-          },
-        },
         explorer = {
           hidden = true,
           -- keep the explorer as a left sidebar (must be explicit, otherwise
