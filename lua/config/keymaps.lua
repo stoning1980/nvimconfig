@@ -32,6 +32,12 @@
 
 local map = vim.keymap.set
 
+-- Keep the register used for a Visual-mode paste intact. After `p` replaces
+-- the selection, reselect the pasted text and yank it back into that register.
+map("x", "p", function()
+  return 'pgv"' .. vim.v.register .. "y"
+end, { expr = true, desc = "Paste without clobbering register" })
+
 -- Shared Diffview helpers -----------------------------------------------------
 local function diffview_view()
   local ok, lib = pcall(require, "diffview.lib")
