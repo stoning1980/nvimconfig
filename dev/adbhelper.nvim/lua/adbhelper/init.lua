@@ -241,35 +241,47 @@ end
 ---@return string
 local function menu_title(lines)
   if #lines == 0 then
-    return "AdbHelper"
+    return "Device actions"
   end
   if #lines == 1 then
-    return "AdbHelper · " .. lines[1].text
+    return "Device actions · Android " .. lines[1].text
   end
   local parts = {}
   for _, line in ipairs(lines) do
     parts[#parts + 1] = line.serial .. " " .. line.text
   end
-  return "AdbHelper · " .. table.concat(parts, ", ")
+  return "Device actions · Android " .. table.concat(parts, ", ")
 end
 
---- Show the adb action menu. Device and app pickers follow the app actions.
---- Proxy on and proxy off come after those, apply to every connected device,
---- and the current reading is shown on the menu itself.
+---@param on_label string
+---@param off_label string
+---@return { text: string, action: string }[]
+function M.menu_items(on_label, off_label)
+  return {
+    { text = "Android - A/B debug menu", action = "ab" },
+    { text = "Android - Relaunch app", action = "relaunch" },
+    { text = "Android - Kill TikTok family app", action = "kill" },
+    { text = "Android - Clear TikTok family app", action = "clear" },
+    { text = "Android - " .. on_label, action = "proxy_on" },
+    { text = "Android - " .. off_label, action = "proxy_off" },
+    { text = "iOS - Launch app", action = "ios_launch" },
+    { text = "iOS - Relaunch app", action = "ios_relaunch" },
+    { text = "iOS - Uninstall app", action = "ios_uninstall" },
+    { text = "iOS - Clear app data (uninstalls app)", action = "ios_clear" },
+  }
+end
+
+--- Show Android and iOS Simulator actions. Android device/app pickers follow
+--- its app actions; iOS actions use connected Simulator targets in Device Hub.
+--- Android proxy actions show the current reading on the menu itself.
 function M.action_menu()
   local ui = require("adbhelper.ui")
   local actions = require("adbhelper.actions")
+  local ios = require("adbhelper.ios")
   local proxy = require("adbhelper.proxy")
   proxy.read(function(lines)
     local on_label, off_label = proxy_labels(lines)
-    ui.select({
-      { text = "A/B debug menu", action = "ab" },
-      { text = "Relaunch app", action = "relaunch" },
-      { text = "Kill TikTok family app", action = "kill" },
-      { text = "Clear TikTok family app", action = "clear" },
-      { text = on_label, action = "proxy_on" },
-      { text = off_label, action = "proxy_off" },
-    }, { title = menu_title(lines) }, function(item)
+    ui.select(M.menu_items(on_label, off_label), { title = menu_title(lines) }, function(item)
       if not item then
         return
       end
@@ -277,6 +289,8 @@ function M.action_menu()
         proxy.on()
       elseif item.action == "proxy_off" then
         proxy.off()
+      elseif item.action:match("^ios_") then
+        ios.run(item.action:sub(5))
       else
         actions.run(item.action)
       end

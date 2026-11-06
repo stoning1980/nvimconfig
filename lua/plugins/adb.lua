@@ -11,14 +11,14 @@ return {
   -- A cursor on whitespace uses the next WORD on the line. After that send,
   -- the cursor stays on the same line and moves to the next WORD, or to the
   -- first WORD when nothing follows. The text is not copied to the clipboard.
-  -- Shift+F12 opens the action menu. Proxy on and proxy off follow the app
-  -- actions, and the menu marks which one is current. Terminals emit shifted
-  -- F12 as <F24>, so both spellings are mapped.
+  -- Shift+F12 opens the Android + iOS Simulator action menu. Android proxy on
+  -- and proxy off follow its app actions, and the menu marks which one is
+  -- current. Terminals emit shifted F12 as <F24>, so both spellings are mapped.
   keys = {
     { "<F12>", ":<C-u>AdbSendText<cr>", mode = "v", desc = "Send selection to Android device" },
     { "<F12>", "<cmd>AdbSendWord<cr>", mode = "n", desc = "Send WORD, then next WORD or first WORD of the line" },
-    { "<S-F12>", "<cmd>AdbMenu<cr>", mode = "n", desc = "AdbHelper action menu" },
-    { "<F24>", "<cmd>AdbMenu<cr>", mode = "n", desc = "AdbHelper action menu" },
+    { "<S-F12>", "<cmd>AdbMenu<cr>", mode = "n", desc = "Android and iOS Simulator action menu" },
+    { "<F24>", "<cmd>AdbMenu<cr>", mode = "n", desc = "Android and iOS Simulator action menu" },
   },
   config = function(_, opts)
     local adb = require("adbhelper")
@@ -31,6 +31,6 @@ return {
     end, { desc = "Send WORD via adb, then next WORD or first WORD of the line" })
     vim.api.nvim_create_user_command("AdbMenu", function()
       adb.action_menu()
-    end, { desc = "AdbHelper: A/B debug, relaunch, kill, clear, then proxy on/off" })
+    end, { desc = "Android and iOS Simulator app actions" })
   end,
 }
