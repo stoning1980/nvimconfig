@@ -53,8 +53,8 @@ end
 -- (`HEAD~..HEAD`), then the newest of origin/develop, origin/master,
 -- origin/main, and origin/dev (by committer date; omitted when none exist),
 -- then 20 recent commits. The first entry opens a working-tree
--- `:DiffviewOpen` that skips AI tool directories (see
--- `config.git_diff.ai_tool_dirs`); the second opens `HEAD~..HEAD`; a branch
+-- `:DiffviewOpen` that skips hidden files and directories; the second opens
+-- `HEAD~..HEAD`; a branch
 -- opens `branch...HEAD`, i.e. what HEAD added since the merge-base.
 --
 -- The last entry re-opens the prompt with every remote branch. That listing is
@@ -89,12 +89,7 @@ local function describe_base(choice, edit)
   local title, scope
   if choice == WORKING_TREE then
     title = "Working tree vs index + HEAD"
-    local dirs = table.concat(require("config.git_diff").ai_tool_dirs, ", ")
-    if edit then
-      scope = "Staged, unstaged, and untracked files, leaving out AI tool directories (" .. dirs .. ")."
-    else
-      scope = "Staged and unstaged changes, leaving out AI tool directories (" .. dirs .. ")."
-    end
+    scope = "Staged, unstaged, and untracked files, leaving out hidden files and directories."
   elseif choice == PREVIOUS_COMMIT then
     title, scope = "HEAD vs its parent", "The changes made by the last commit."
   else
@@ -107,8 +102,7 @@ local function describe_base(choice, edit)
     end
   end
   if edit then
-    local body =
-      "Closes other open buffers, then opens every changed file. Deleted files and AI tool directories are skipped."
+    local body = "Closes other open buffers, then opens every changed file. Deleted and hidden paths are skipped."
     return ("%s\n\n%s\n\n%s"):format(title, body, scope)
   end
   local range = base_range(choice)
@@ -122,10 +116,10 @@ local function open_base(choice)
     return
   end
   local git_diff = require("config.git_diff")
-  git_diff.arm_ai_tool_filter()
+  git_diff.arm_hidden_filter()
   local ok, err = pcall(vim.cmd, "DiffviewOpen")
   if not ok then
-    git_diff.disarm_ai_tool_filter()
+    git_diff.disarm_hidden_filter()
     error(err)
   end
 end
@@ -200,7 +194,7 @@ end
 
 -- Like <F1>, but instead of a Diffview it closes the other buffers and opens
 -- every file that differs from the chosen base as a regular, editable buffer.
--- AI tool directories are skipped for every base, using the same path check as
+-- Hidden files and directories are skipped for every base, using the same path check as
 -- the Git status Diffview. From insert, visual, select, the command line, or a
 -- terminal, drop to normal first, the same way <F5> does, then open the picker.
 local function edit_changed_files()

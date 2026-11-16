@@ -13,16 +13,12 @@ return {
     opts = {
       -- Dim unchanged regions and emphasize the actual changed text/words.
       enhanced_diff_hl = true,
-      -- Hide untracked/hidden files from the file panel by default (-uno).
-      default_args = {
-        DiffviewOpen = { "-uno" },
-      },
-      -- <F1> Git status arms this so tool directories are removed from the
-      -- file list. Path args cannot do it: Diffview would show them as the
+      -- <F1> Git status arms this so hidden paths are removed after tracked
+      -- and untracked changes are listed. Path args cannot do it: Diffview would show them as the
       -- diff scope and the real changes would disappear.
       hooks = {
         view_opened = function(view)
-          require("config.git_diff").consume_ai_tool_filter(view)
+          require("config.git_diff").consume_hidden_filter(view)
         end,
       },
     },

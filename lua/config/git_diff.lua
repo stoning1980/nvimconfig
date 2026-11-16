@@ -3,7 +3,7 @@
 --   :CompareHead  compare HEAD with a previous commit (Tab: last 20 ancestors)
 --   :EditDiff     close other buffers, then open every file differing from a
 --                 base branch (Tab: ordered branches, defaults to origin/develop;
---                 confirms past 20 files; skips AI tool directories)
+--                 confirms past 20 files; skips hidden paths)
 --   :CompareFiles diff two repo files picked from a fuzzy list (Tab to select two)
 --   :CompareVersionFile pick a version (Tab to complete), then a file, to diff
 --                 HEAD's copy of that file against the chosen version's copy
@@ -507,9 +507,9 @@ local function repo_root()
   return out and out[1] or nil
 end
 
--- Dot-directories owned by coding agents. They are tool state, not changes
--- to review, and a match is any path segment (`.agent` does not match
--- `.agency`), at the repo root or nested.
+-- Hidden files and directories are state/configuration rather than source
+-- changes to review. A path is hidden when any segment starts with a dot,
+-- whether that segment is at the repo root or nested.
 --
 -- <F1> drops them from the "Git status" Diffview file list after Git returns
 -- it. Passing the same paths as Diffview path args makes them the diff scope:
@@ -518,73 +518,44 @@ end
 -- inside one of these directories.
 --
 -- <F2> and :EditDiff drop them from every list of files they open as buffers.
-M.ai_tool_dirs = {
-  ".agent",
-  ".agents",
-  ".aider",
-  ".amazonq",
-  ".augment",
-  ".claude",
-  ".cline",
-  ".codeium",
-  ".codex",
-  ".continue",
-  ".copilot",
-  ".cursor",
-  ".gemini",
-  ".kilocode",
-  ".opencode",
-  ".roo",
-  ".trae",
-  ".ttadk",
-  ".windsurf",
-}
-
-local ai_tool_dir_set = {}
-for _, dir in ipairs(M.ai_tool_dirs) do
-  ai_tool_dir_set[dir] = true
-end
-
--- True when any path segment is an AI tool directory. `.agent` does not match
--- `.agency`.
-function M.is_ai_tool_path(path)
+function M.is_hidden_path(path)
   if not path or path == "" then
     return false
   end
   for segment in path:gmatch("[^/\\]+") do
-    if ai_tool_dir_set[segment] then
+    if #segment > 1 and segment:sub(1, 1) == "." and segment ~= ".." then
       return true
     end
   end
   return false
 end
 
-local function without_ai_tool_files(entries)
+local function without_hidden_files(entries)
   local kept = {}
   for _, entry in ipairs(entries) do
-    if not M.is_ai_tool_path(entry.path) then
+    if not M.is_hidden_path(entry.path) then
       kept[#kept + 1] = entry
     end
   end
   return kept
 end
 
-local function without_ai_tool_paths(paths)
+local function without_hidden_paths(paths)
   local kept = {}
   for _, path in ipairs(paths) do
-    if not M.is_ai_tool_path(path) then
+    if not M.is_hidden_path(path) then
       kept[#kept + 1] = path
     end
   end
   return kept
 end
 
--- Drop AI tool entries from a Diffview FileDict. The current path is what the
+-- Drop hidden entries from a Diffview FileDict. The current path is what the
 -- panel lists; a rename out of a tool directory into the tree still shows.
-function M.drop_ai_tool_files(files)
-  files:set_conflicting(without_ai_tool_files(files.conflicting))
-  files:set_working(without_ai_tool_files(files.working))
-  files:set_staged(without_ai_tool_files(files.staged))
+function M.drop_hidden_files(files)
+  files:set_conflicting(without_hidden_files(files.conflicting))
+  files:set_working(without_hidden_files(files.working))
+  files:set_staged(without_hidden_files(files.staged))
   files:update_file_trees()
 end
 
@@ -592,15 +563,15 @@ end
 -- hook consumes it so a later branch diff is left alone.
 local filter_working_tree = false
 
-function M.arm_ai_tool_filter()
+function M.arm_hidden_filter()
   filter_working_tree = true
 end
 
-function M.disarm_ai_tool_filter()
+function M.disarm_hidden_filter()
   filter_working_tree = false
 end
 
-function M.consume_ai_tool_filter(view)
+function M.consume_hidden_filter(view)
   if not filter_working_tree then
     return
   end
@@ -614,7 +585,7 @@ function M.consume_ai_tool_filter(view)
   view.get_updated_files = async.wrap(function(self, callback)
     local err, files = async.await(orig(self))
     if files then
-      M.drop_ai_tool_files(files)
+      M.drop_hidden_files(files)
     end
     callback(err, files)
   end)
@@ -826,7 +797,7 @@ end
 
 -- Open every file changed in `range` (see changed_files; nil = uncommitted
 -- changes) as an editable buffer, as opposed to <F1>, which shows the same set
--- in a read-only Diffview. Paths under M.ai_tool_dirs are left out, same as
+-- in a read-only Diffview. Hidden paths are left out, same as
 -- the Git status Diffview. Other listed buffers are closed first, so the
 -- buffer list is only these files; a buffer already showing one of them is
 -- kept, including unsaved edits. Files are added with bufadd (cheap, no
@@ -845,10 +816,10 @@ function M.edit_changed(range)
     return
   end
   local listed = #files
-  files = without_ai_tool_paths(files)
+  files = without_hidden_paths(files)
   if #files == 0 then
     if listed > 0 then
-      notify("No files " .. what .. " outside AI tool directories")
+      notify("No files " .. what .. " outside hidden paths")
     else
       notify("No files " .. what)
     end
