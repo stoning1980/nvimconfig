@@ -15,8 +15,8 @@
 -- │ S-F5    : all modes → remote branch, show HEAD, close session        │
 -- │ F6      : n/i/t/c → :GitGrep (git-tracked) | v/s → grep selection    │
 -- │ F7      : n → grep open buffers  |  v → grep selection in buffers    │
--- │ F8      : v → send selection | n → send buffered files (claudeide)   │
--- │ S-F8    : n → start Claude IDE server (auto_start off)               │
+-- │ F8      : n → comment current line | v → comment selection (Herdr)  │
+-- │ S-F8    : Not mapped.                                                │
 -- │ F9      : n → send file / v → send selection to AI agent (codechat)  │
 -- │ S-F9    : n/v/t → close CodeChat window, terminal, and session       │
 -- │ F10     : n → mark word / v → mark selection (interestingwords)      │

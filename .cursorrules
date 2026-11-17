@@ -1,10 +1,10 @@
-This is a Neovim configuration built on LazyVim. It includes two custom plugins in dev/.
+This is a Neovim configuration built on LazyVim. It includes custom plugins in dev/.
 
 ## Key Facts
 
 - Entry point: init.lua → lua/config/lazy.lua (bootstraps lazy.nvim + LazyVim)
 - Plugin specs live in lua/plugins/ (each file returns a lazy.nvim spec table)
-- Custom plugins: dev/claudeide.nvim (MCP server) and dev/codechat.nvim (AI terminal driver)
+- Custom plugins: dev/claudeide.nvim (MCP server), dev/codechat.nvim (AI terminal driver), and dev/herdr.nvim (Herdr review comments)
 - Leader key: , (comma)
 - Lua style: 2-space indent, 120 column width (stylua.toml)
 - Format with: stylua lua/
@@ -17,6 +17,7 @@ This is a Neovim configuration built on LazyVim. It includes two custom plugins 
 - Custom plugins load via event = "VeryLazy" plus explicit cmd/keys tables
 - Both custom plugins depend on no external Lua libraries (pure Lua + Neovim APIs)
 - codechat.nvim depends on folke/snacks.nvim for terminals and floating windows
+- herdr.nvim depends on folke/snacks.nvim for its comment float, discovers agents through the Herdr CLI, and sends direct prompts
 - claudeide.nvim implements WebSocket + MCP protocol from scratch using vim.uv TCP
 
 ## Architecture: claudeide.nvim

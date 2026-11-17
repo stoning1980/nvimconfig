@@ -4,7 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Neovim configuration built on **LazyVim** (the distribution framework on top of lazy.nvim). It includes two significant custom plugins in `dev/` that provide AI coding assistant integration.
+This is a Neovim configuration built on **LazyVim** (the distribution framework on top of lazy.nvim). It includes custom
+plugins in `dev/` that provide AI coding assistant integration.
 
 ## Architecture
 
@@ -18,6 +19,7 @@ This is a Neovim configuration built on **LazyVim** (the distribution framework 
 - `lua/plugins/` — Plugin specs (each file returns a lazy.nvim spec table)
 - `dev/claudeide.nvim/` — Custom plugin: WebSocket-based MCP server making Neovim an IDE endpoint for Claude CLI
 - `dev/codechat.nvim/` — Custom plugin: Terminal driver for AI coding agents (Claude, Cursor, ttadk wrappers)
+- `dev/herdr.nvim/` — Custom plugin: Git-anchored review comments sent directly to Herdr agents
 
 ### Custom Plugin: claudeide.nvim
 
@@ -38,6 +40,17 @@ Key subsystems:
 - `terminal.lua` — Terminal lifecycle and input injection
 - `ui.lua` — Comment popup (Snacks float) before sending context
 - `config.lua` — Agent registry (command, setup steps, login shell, fallbacks)
+
+### Custom Plugin: herdr.nvim
+
+Finds Herdr agents associated with the current Git repository and sends a typed
+review comment plus exact visual selection context directly to the selected agent.
+
+Key subsystems:
+- `repo.lua` + `context.lua` — Git-root metadata and selected-text anchors
+- `discovery.lua` — Herdr CLI snapshot discovery and repository matching
+- `client.lua` — Direct `herdr agent prompt` delivery
+- `input.lua` — Snacks comment float with a `vim.ui.input` fallback
 
 ## Conventions
 
