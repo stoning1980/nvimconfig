@@ -3,13 +3,20 @@ local config = require("herdr.config")
 local context = require("herdr.context")
 local discovery = require("herdr.discovery")
 local input = require("herdr.input")
+local queue = require("herdr.queue")
 local repo = require("herdr.repo")
 
 local M = {}
 local active_agents = {}
 
 local function notify(message, level)
-  vim.notify("[herdr] " .. message, level or vim.log.levels.INFO)
+  local highlight = ({
+    [vim.log.levels.ERROR] = "ErrorMsg",
+    [vim.log.levels.WARN] = "WarningMsg",
+  })[level] or "None"
+  vim.schedule(function()
+    vim.api.nvim_echo({ { "[herdr] " .. message, highlight } }, false, {})
+  end)
 end
 
 ---@param visual boolean
@@ -94,56 +101,92 @@ local function choose_agent(selection, agents)
   return nil
 end
 
----@param selection table
+---@param repo_root string
 ---@param agent table
-local function comment(agent, selection)
-  input.open(config.options.input, "Review comment → " .. label(agent), function(comment_text)
-    client.send_review(agent, selection, comment_text, function(ok, err)
-      if ok then
-        notify("review comment sent to " .. label(agent))
-      else
-        notify(err, vim.log.levels.ERROR)
-      end
-    end)
+local function send_queue(agent, repo_root)
+  local items = queue.items(repo_root)
+  if #items == 0 then
+    notify("no queued review comments for this repository", vim.log.levels.WARN)
+    return
+  end
+  client.send_queue(agent, items, function(ok, err)
+    if ok then
+      queue.clear(repo_root)
+      notify(string.format("sent %d queued review comment(s) to %s", #items, label(agent)))
+    else
+      notify(err, vim.log.levels.ERROR)
+    end
   end)
 end
 
----@param selection table
+---@param repo_root string
 ---@param agents table[]
-local function route_comment(selection, agents)
+local function route_queue(repo_root, agents)
   if #agents == 0 then
     notify("no Herdr agent is running for this repository", vim.log.levels.WARN)
     return
   end
-  local agent = choose_agent(selection, agents)
+  local agent = choose_agent({ repo_root = repo_root }, agents)
   if agent then
-    comment(agent, selection)
+    send_queue(agent, repo_root)
     return
   end
   local labels = vim.tbl_map(label, agents)
-  vim.ui.select(labels, { prompt = "Send review comment to which Herdr agent?" }, function(_, index)
-    if not index then
+  vim.ui.select(labels, { prompt = "Submit queued comments to which Herdr agent?" }, function(_, index)
+    if index then
+      local selected = agents[index]
+      active_agents[repo_root] = selected.agent_id or selected.pane_id
+      send_queue(selected, repo_root)
+    end
+  end)
+end
+
+---@param repo_root string
+local function submit_queue(repo_root)
+  if queue.count(repo_root) == 0 then
+    notify("no queued review comments for this repository", vim.log.levels.WARN)
+    return
+  end
+  discovery.for_repo(repo_root, function(agents, err)
+    if err then
+      notify(err, vim.log.levels.ERROR)
       return
     end
-    local selected = agents[index]
-    active_agents[selection.repo_root] = selected.agent_id or selected.pane_id
-    comment(selected, selection)
+    route_queue(repo_root, agents)
   end)
+end
+
+---@param selection table
+local function comment(selection)
+  local queued = queue.count(selection.repo_root)
+  input.open(config.options.input, string.format("Review comment (queued: %d)", queued), {
+    items = queue.items(selection.repo_root),
+    on_add = function(comment_text)
+      queue.add(selection, comment_text)
+      notify(string.format("review comment added to queue (%d)", queue.count(selection.repo_root)))
+    end,
+    on_submit = function(comment_text)
+      if comment_text ~= "" then
+        queue.add(selection, comment_text)
+      end
+      submit_queue(selection.repo_root)
+    end,
+  })
 end
 
 ---@param visual boolean
 function M.comment(visual)
   local selection = capture(visual)
-  if not selection then
-    return
+  if selection then
+    comment(selection)
   end
-  discovery.for_repo(selection.repo_root, function(agents, err)
-    if err then
-      notify(err, vim.log.levels.ERROR)
-      return
-    end
-    route_comment(selection, agents)
-  end)
+end
+
+function M.submit_queue()
+  local selection = capture(false)
+  if selection then
+    submit_queue(selection.repo_root)
+  end
 end
 
 function M.pick()
@@ -189,10 +232,18 @@ function M.status()
       return
     end
     if #agents == 0 then
-      notify("no Herdr agent is running for this repository", vim.log.levels.WARN)
+      notify(
+        string.format("%d queued review comment(s); no Herdr agent is running", queue.count(selection.repo_root)),
+        vim.log.levels.WARN
+      )
       return
     end
-    notify(string.format("%d Herdr agent(s): %s", #agents, table.concat(vim.tbl_map(label, agents), ", ")))
+    notify(string.format(
+      "%d queued review comment(s); %d Herdr agent(s): %s",
+      queue.count(selection.repo_root),
+      #agents,
+      table.concat(vim.tbl_map(label, agents), ", ")
+    ))
   end)
 end
 
@@ -200,10 +251,11 @@ function M.setup(opts)
   config.setup(opts)
   vim.api.nvim_create_user_command("HerdrComment", function()
     M.comment(false)
-  end, { desc = "Send current line review comment to Herdr agent" })
+  end, { desc = "Queue current line review comment for Herdr agent" })
   vim.api.nvim_create_user_command("HerdrCommentVisual", function()
     M.comment(true)
-  end, { desc = "Send visual review comment to Herdr agent" })
+  end, { desc = "Queue visual review comment for Herdr agent" })
+  vim.api.nvim_create_user_command("HerdrSubmitQueue", M.submit_queue, { desc = "Submit queued review comments to Herdr agent" })
   vim.api.nvim_create_user_command("HerdrPick", M.pick, { desc = "Choose Herdr agent for this repository" })
   vim.api.nvim_create_user_command("HerdrRefresh", M.refresh, { desc = "Refresh Herdr agents for this repository" })
   vim.api.nvim_create_user_command("HerdrStatus", M.status, { desc = "Show Herdr agent status for this repository" })

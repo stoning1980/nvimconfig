@@ -5,6 +5,8 @@ local context = require("herdr.context")
 local config = require("herdr.config")
 local discovery = require("herdr.discovery")
 local client = require("herdr.client")
+local input = require("herdr.input")
+local queue = require("herdr.queue")
 local repo = require("herdr.repo")
 
 local function assert_equal(actual, expected, message)
@@ -107,6 +109,61 @@ end
 
 test_builds_direct_review_prompt()
 
+local function test_keeps_review_comments_in_separate_repo_queues()
+  queue.clear("/work/app")
+  queue.clear("/work/other")
+  local selection = {
+    repo_root = "/work/app",
+    path = "lua/example.lua",
+    start_line = 12,
+    end_line = 13,
+    text = "first()\nsecond()",
+    branch = "feature/review",
+    revision = "abc123",
+  }
+
+  queue.add(selection, "Guard this value.")
+  queue.add(vim.tbl_extend("force", {}, selection, { start_line = 20, end_line = 20, text = "third()" }), "Name this.")
+  queue.add({
+    repo_root = "/work/other",
+    path = "main.lua",
+    start_line = 1,
+    end_line = 1,
+    text = "run()",
+    branch = "main",
+    revision = "def456",
+  }, "Add a test.")
+
+  assert_equal(queue.count("/work/app"), 2)
+  assert_equal(queue.count("/work/other"), 1)
+  assert_equal(queue.items("/work/app")[1].comment, "Guard this value.")
+end
+
+test_keeps_review_comments_in_separate_repo_queues()
+
+local function test_builds_one_prompt_from_queued_comments()
+  local prompt = client.queue_prompt(queue.items("/work/app"))
+
+  assert(prompt:find("Queued review comments from Neovim %(2%)"))
+  assert(prompt:find("Review 1"))
+  assert(prompt:find("Repository location: lua/example.lua:12%-13"))
+  assert(prompt:find("Guard this value%."))
+  assert(prompt:find("Review 2"))
+  assert(prompt:find("Repository location: lua/example.lua:20"))
+  assert(prompt:find("Name this%."))
+end
+
+test_builds_one_prompt_from_queued_comments()
+
+local function test_formats_queued_comments_for_composer_list()
+  assert(vim.deep_equal(input.queue_lines(queue.items("/work/app")), {
+    "1. lua/example.lua:12-13 — Guard this value.",
+    "2. lua/example.lua:20 — Name this.",
+  }))
+end
+
+test_formats_queued_comments_for_composer_list()
+
 local function test_resolves_git_context_for_file()
   local info = repo.for_path(root .. "/tests/herdr_spec.lua")
 
@@ -143,4 +200,18 @@ local function test_reserves_f8_for_herdr_not_claudeide()
 end
 
 test_reserves_f8_for_herdr_not_claudeide()
+
+local function test_exposes_a_submit_queue_command()
+  local herdr_spec = table.concat(vim.fn.readfile(root .. "/lua/plugins/herdr.lua"), "\n")
+  assert(herdr_spec:find('"HerdrSubmitQueue"', 1, true), "Herdr must expose queue submission")
+end
+
+test_exposes_a_submit_queue_command()
+
+local function test_uses_messages_instead_of_toast_notifications()
+  local herdr_init = table.concat(vim.fn.readfile(root .. "/dev/herdr.nvim/lua/herdr/init.lua"), "\n")
+  assert(not herdr_init:find("vim.notify(", 1, true), "Herdr feedback must not create toast notifications")
+end
+
+test_uses_messages_instead_of_toast_notifications()
 print("herdr_spec: all tests passed")

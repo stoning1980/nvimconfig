@@ -43,11 +43,11 @@ Key subsystems:
 
 ### Custom Plugin: herdr.nvim
 
-Finds Herdr agents associated with the current Git repository and sends a typed
-review comment plus exact visual selection context directly to the selected agent.
+Queues typed review comments plus exact visual selection context for the current
+Git repository, then sends the batch directly to the selected Herdr agent.
 
 Key subsystems:
-- `repo.lua` + `context.lua` — Git-root metadata and selected-text anchors
+- `repo.lua` + `context.lua` + `queue.lua` — Git-root metadata, selected-text anchors, and session-only queues
 - `discovery.lua` — Herdr CLI snapshot discovery and repository matching
 - `client.lua` — Direct `herdr agent prompt` delivery
 - `input.lua` — Snacks comment float with a `vim.ui.input` fallback
