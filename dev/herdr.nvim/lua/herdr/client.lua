@@ -1,16 +1,60 @@
 local M = {}
 
 ---@param selection table
+---@return string
+local function location(selection)
+  local value = selection.path .. ":" .. selection.start_line
+  if selection.end_line and selection.end_line ~= selection.start_line then
+    value = value .. "-" .. selection.end_line
+  end
+  return value
+end
+
+---@param selection table
+---@param comment string
+---@return string
+local function changed_review_prompt(selection, comment)
+  local change = selection.change
+  local parts = {
+    "Review comment from Neovim",
+    "Repository location: " .. location(selection),
+    "Branch: " .. (selection.branch or "unknown"),
+    "Revision: " .. (selection.revision or "unknown"),
+    "",
+    "Selected current code:",
+    "```",
+    selection.text or "",
+    "```",
+    "",
+    "Relevant before/current change:",
+  }
+  if change.patch then
+    vim.list_extend(parts, {
+      "```diff",
+      change.patch,
+      "```",
+    })
+  else
+    parts[#parts + 1] = change.note or "No changed hunk overlaps the selected current lines."
+  end
+  vim.list_extend(parts, {
+    "",
+    "Comment:",
+    comment,
+  })
+  return table.concat(parts, "\n")
+end
+
+---@param selection table
 ---@param comment string
 ---@return string
 function M.review_prompt(selection, comment)
-  local location = selection.path .. ":" .. selection.start_line
-  if selection.end_line and selection.end_line ~= selection.start_line then
-    location = location .. "-" .. selection.end_line
+  if selection.change then
+    return changed_review_prompt(selection, comment)
   end
   return table.concat({
     "Review comment from Neovim",
-    "Repository location: " .. location,
+    "Repository location: " .. location(selection),
     "Branch: " .. (selection.branch or "unknown"),
     "Revision: " .. (selection.revision or "unknown"),
     "",

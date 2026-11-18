@@ -10,6 +10,25 @@ local function git(command)
   return output[1]
 end
 
+---@param root string
+---@return table|nil
+function M.for_root(root)
+  if root == "" then
+    return nil
+  end
+  root = vim.uv.fs_realpath(root) or root
+  root = git({ "git", "-C", root, "rev-parse", "--show-toplevel" })
+  if not root then
+    return nil
+  end
+  root = vim.uv.fs_realpath(root) or root
+  return {
+    root = root,
+    branch = git({ "git", "-C", root, "branch", "--show-current" }) or "HEAD",
+    revision = git({ "git", "-C", root, "rev-parse", "HEAD" }) or "unknown",
+  }
+end
+
 ---@param path string
 ---@return table|nil
 function M.for_path(path)
@@ -18,21 +37,16 @@ function M.for_path(path)
   end
   path = vim.uv.fs_realpath(path) or path
   local directory = vim.fs.dirname(path)
-  local root = git({ "git", "-C", directory, "rev-parse", "--show-toplevel" })
-  if not root then
+  local info = M.for_root(directory)
+  if not info then
     return nil
   end
-  root = vim.uv.fs_realpath(root) or root
-  local relpath = vim.fs.relpath(root, path)
+  local relpath = vim.fs.relpath(info.root, path)
   if not relpath then
     return nil
   end
-  return {
-    root = root,
-    relpath = relpath,
-    branch = git({ "git", "-C", root, "branch", "--show-current" }) or "HEAD",
-    revision = git({ "git", "-C", root, "rev-parse", "HEAD" }) or "unknown",
-  }
+  info.relpath = relpath
+  return info
 end
 
 return M

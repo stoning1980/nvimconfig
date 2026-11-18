@@ -2,6 +2,7 @@ local client = require("herdr.client")
 local config = require("herdr.config")
 local context = require("herdr.context")
 local discovery = require("herdr.discovery")
+local diffview = require("herdr.diffview")
 local input = require("herdr.input")
 local queue = require("herdr.queue")
 local repo = require("herdr.repo")
@@ -19,21 +20,10 @@ local function notify(message, level)
   end)
 end
 
+---@param buf integer
 ---@param visual boolean
 ---@return table|nil
-local function capture(visual)
-  local buf = vim.api.nvim_get_current_buf()
-  if vim.bo[buf].buftype ~= "" then
-    notify("current buffer is not a file", vim.log.levels.WARN)
-    return nil
-  end
-  local path = vim.api.nvim_buf_get_name(buf)
-  local info = repo.for_path(path)
-  if not info then
-    notify("current file is not in a Git repository", vim.log.levels.WARN)
-    return nil
-  end
-
+local function editor_selection(buf, visual)
   local start_line, start_col, end_line, end_col
   if visual then
     local start = vim.api.nvim_buf_get_mark(buf, "<")
@@ -64,17 +54,62 @@ local function capture(visual)
       "\n"
     )
   end
-  return context.selection({
-    repo_root = info.root,
-    path = path,
+  return {
     start_line = start_line,
     start_col = start_col,
     end_line = end_line,
     end_col = end_col,
     text = text,
+  }
+end
+
+---@param visual boolean
+---@return table|nil
+function M.capture(visual)
+  local buf = vim.api.nvim_get_current_buf()
+  local selection = editor_selection(buf, visual)
+  if not selection then
+    return nil
+  end
+
+  local ok, lib = pcall(require, "diffview.lib")
+  local view = ok and lib.get_current_view() or nil
+  local current_win = vim.api.nvim_get_current_win()
+  if view and diffview.contains_window(view, current_win) then
+    local root = view.adapter and view.adapter.ctx and view.adapter.ctx.toplevel
+    local info = root and repo.for_root(root) or nil
+    if not info then
+      notify("Diffview repository context is unavailable", vim.log.levels.WARN)
+      return nil
+    end
+    local captured, err = diffview.snapshot(view, current_win, selection, info)
+    if not captured then
+      notify(err, vim.log.levels.WARN)
+      return nil
+    end
+    if not diffview.matches_worktree(view.cur_layout.windows[2].file) then
+      notify("right Diffview pane does not match the checked-out file", vim.log.levels.WARN)
+      return nil
+    end
+    return captured
+  end
+
+  if vim.bo[buf].buftype ~= "" then
+    notify("current buffer is not a file", vim.log.levels.WARN)
+    return nil
+  end
+  local path = vim.api.nvim_buf_get_name(buf)
+  local info = repo.for_path(path)
+  if not info then
+    notify("current file is not in a Git repository", vim.log.levels.WARN)
+    return nil
+  end
+  return context.selection(vim.tbl_extend("force", selection, {
+    repo_root = info.root,
+    path = path,
     branch = info.branch,
     revision = info.revision,
-  })
+  }))
 end
 
 local function label(agent)
@@ -176,21 +211,21 @@ end
 
 ---@param visual boolean
 function M.comment(visual)
-  local selection = capture(visual)
+  local selection = M.capture(visual)
   if selection then
     comment(selection)
   end
 end
 
 function M.submit_queue()
-  local selection = capture(false)
+  local selection = M.capture(false)
   if selection then
     submit_queue(selection.repo_root)
   end
 end
 
 function M.pick()
-  local selection = capture(false)
+  local selection = M.capture(false)
   if not selection then
     return
   end
@@ -214,7 +249,7 @@ function M.pick()
 end
 
 function M.refresh()
-  local selection = capture(false)
+  local selection = M.capture(false)
   if selection then
     active_agents[selection.repo_root] = nil
   end
@@ -222,7 +257,7 @@ function M.refresh()
 end
 
 function M.status()
-  local selection = capture(false)
+  local selection = M.capture(false)
   if not selection then
     return
   end
@@ -238,12 +273,14 @@ function M.status()
       )
       return
     end
-    notify(string.format(
-      "%d queued review comment(s); %d Herdr agent(s): %s",
-      queue.count(selection.repo_root),
-      #agents,
-      table.concat(vim.tbl_map(label, agents), ", ")
-    ))
+    notify(
+      string.format(
+        "%d queued review comment(s); %d Herdr agent(s): %s",
+        queue.count(selection.repo_root),
+        #agents,
+        table.concat(vim.tbl_map(label, agents), ", ")
+      )
+    )
   end)
 end
 
@@ -255,7 +292,11 @@ function M.setup(opts)
   vim.api.nvim_create_user_command("HerdrCommentVisual", function()
     M.comment(true)
   end, { desc = "Queue visual review comment for Herdr agent" })
-  vim.api.nvim_create_user_command("HerdrSubmitQueue", M.submit_queue, { desc = "Submit queued review comments to Herdr agent" })
+  vim.api.nvim_create_user_command(
+    "HerdrSubmitQueue",
+    M.submit_queue,
+    { desc = "Submit queued review comments to Herdr agent" }
+  )
   vim.api.nvim_create_user_command("HerdrPick", M.pick, { desc = "Choose Herdr agent for this repository" })
   vim.api.nvim_create_user_command("HerdrRefresh", M.refresh, { desc = "Refresh Herdr agents for this repository" })
   vim.api.nvim_create_user_command("HerdrStatus", M.status, { desc = "Show Herdr agent status for this repository" })
