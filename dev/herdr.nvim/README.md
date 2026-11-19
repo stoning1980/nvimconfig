@@ -29,10 +29,10 @@ panes inside a Git repository. Herdr agents are discovered with
 | `:HerdrStatus` | `,hs` | Display matching Herdr agents and their states. |
 
 The comment float shows the current queue count and lists existing queued
-comments below the input. Press Enter to add its text to the queue, or Ctrl+S
-to add its text (when present) and submit all queued comments. The queue is
-held only for the current Neovim session and is scoped to the Git repository.
-It remains intact when a Herdr submission fails.
+comments below the input. Press Enter to add its text (when present) and submit
+all queued comments, or Ctrl+S to add its text to the queue without submitting.
+The queue is held only for the current Neovim session and is scoped to the Git
+repository. It remains intact when a Herdr submission fails.
 
 At submission, Herdr agents are discovered and one is selected or reused for
 the repository. A combined prompt includes every queued item's Git-root-relative

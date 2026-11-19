@@ -641,6 +641,18 @@ end
 
 test_formats_queued_comments_for_composer_list()
 
+local function test_submits_on_enter_and_queues_on_ctrl_s()
+  local source = table.concat(vim.fn.readfile(root .. "/dev/herdr.nvim/lua/herdr/input.lua"), "\n")
+  local fallback = source:match("if not ok then(.-)\n  end\n\n  local win")
+
+  assert(source:find('footer = " Enter = Submit all   Ctrl+S = Add to queue', 1, true))
+  assert(source:find('vim.keymap.set({ "i", "n" }, "<CR>", submit', 1, true))
+  assert(source:find('vim.keymap.set({ "i", "n" }, "<C-s>", add', 1, true))
+  assert(fallback and fallback:find("actions.on_submit(comment)", 1, true))
+end
+
+test_submits_on_enter_and_queues_on_ctrl_s()
+
 local function test_formats_changed_queue_item_as_current_location()
   local selection = changed_review("lua/example.lua", "old()", "new()")
   local lines = input.queue_lines({ { selection = selection, comment = "Keep this behavior." } })

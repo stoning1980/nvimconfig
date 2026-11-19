@@ -23,7 +23,7 @@ function M.open(options, title, actions)
   if not ok then
     vim.ui.input({ prompt = title .. ": " }, function(comment)
       if comment and vim.trim(comment) ~= "" then
-        actions.on_add(comment)
+        actions.on_submit(comment)
       end
     end)
     return
@@ -36,7 +36,7 @@ function M.open(options, title, actions)
     border = "rounded",
     title = " " .. title .. " ",
     title_pos = "center",
-    footer = " Enter = Add to queue   Ctrl+S = Submit all   Alt+Enter = newline   Esc = cancel ",
+    footer = " Enter = Submit all   Ctrl+S = Add to queue   Alt+Enter = newline   Esc = cancel ",
     footer_pos = "center",
     enter = true,
     bo = { filetype = "markdown", modifiable = true, buftype = "nofile" },
@@ -71,8 +71,8 @@ function M.open(options, title, actions)
     close()
     actions.on_submit(comment)
   end
-  vim.keymap.set({ "i", "n" }, "<CR>", add, { buffer = win.buf, nowait = true })
-  vim.keymap.set({ "i", "n" }, "<C-s>", submit, { buffer = win.buf, nowait = true })
+  vim.keymap.set({ "i", "n" }, "<CR>", submit, { buffer = win.buf, nowait = true })
+  vim.keymap.set({ "i", "n" }, "<C-s>", add, { buffer = win.buf, nowait = true })
   vim.keymap.set("i", "<M-CR>", "<CR>", { buffer = win.buf, nowait = true, remap = false })
   vim.keymap.set({ "i", "n" }, "<Esc>", function()
     close()
