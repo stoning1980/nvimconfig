@@ -54,8 +54,8 @@ end
 -- origin/main, and origin/dev (by committer date; omitted when none exist),
 -- then 20 recent commits. The first entry opens a working-tree
 -- `:DiffviewOpen` that skips hidden files and directories; the second opens
--- `HEAD~..HEAD`; a branch
--- opens `branch...HEAD`, i.e. what HEAD added since the merge-base.
+-- `HEAD~..HEAD`; a selected commit opens `commit..HEAD`; a branch opens
+-- `branch...HEAD`, i.e. what HEAD added since the merge-base.
 --
 -- The last entry re-opens the prompt with every remote branch. That listing is
 -- the one slow query in a big repo (see lua/config/git_diff.lua), so it is kept
@@ -83,6 +83,13 @@ local function base_range(choice)
   return choice .. "...HEAD"
 end
 
+-- F1 treats a commit selection as the base to compare with HEAD. F2 keeps
+-- using base_range(), where selecting a commit means that single commit.
+local function diffview_range(choice)
+  local sha = choice:match(COMMIT_PAT)
+  return sha and (sha .. "..HEAD") or base_range(choice)
+end
+
 -- Preview text for a picker choice. `edit` describes <F2> (open the changed
 -- files as buffers) rather than <F1> (open a Diffview).
 local function describe_base(choice, edit)
@@ -96,7 +103,8 @@ local function describe_base(choice, edit)
     local sha = choice:match(COMMIT_PAT)
     if sha then
       title = sha
-      scope = choice:sub(#sha + 2) .. "\n\nThe changes introduced by this single commit."
+      scope = choice:sub(#sha + 2)
+        .. (edit and "\n\nThe changes introduced by this single commit." or "\n\nThe changes from this commit to HEAD.")
     else
       title, scope = choice .. " vs HEAD", "What HEAD added since its merge-base with " .. choice .. "."
     end
@@ -105,12 +113,12 @@ local function describe_base(choice, edit)
     local body = "Closes other open buffers, then opens every changed file. Deleted and hidden paths are skipped."
     return ("%s\n\n%s\n\n%s"):format(title, body, scope)
   end
-  local range = base_range(choice)
+  local range = edit and base_range(choice) or diffview_range(choice)
   return ("%s\n\n:DiffviewOpen%s\n\n%s"):format(title, range and (" " .. range) or "", scope)
 end
 
 local function open_base(choice)
-  local range = base_range(choice)
+  local range = diffview_range(choice)
   if range then
     vim.cmd("DiffviewOpen " .. range)
     return
