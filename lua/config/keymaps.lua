@@ -78,16 +78,9 @@ local function base_range(choice)
   end
   local sha = choice:match(COMMIT_PAT)
   if sha then
-    return sha .. "^.." .. sha
+    return sha .. "..HEAD"
   end
   return choice .. "...HEAD"
-end
-
--- F1 treats a commit selection as the base to compare with HEAD. F2 keeps
--- using base_range(), where selecting a commit means that single commit.
-local function diffview_range(choice)
-  local sha = choice:match(COMMIT_PAT)
-  return sha and (sha .. "..HEAD") or base_range(choice)
 end
 
 -- Preview text for a picker choice. `edit` describes <F2> (open the changed
@@ -103,8 +96,7 @@ local function describe_base(choice, edit)
     local sha = choice:match(COMMIT_PAT)
     if sha then
       title = sha
-      scope = choice:sub(#sha + 2)
-        .. (edit and "\n\nThe changes introduced by this single commit." or "\n\nThe changes from this commit to HEAD.")
+      scope = choice:sub(#sha + 2) .. "\n\nThe changes from this commit to HEAD."
     else
       title, scope = choice .. " vs HEAD", "What HEAD added since its merge-base with " .. choice .. "."
     end
@@ -113,12 +105,12 @@ local function describe_base(choice, edit)
     local body = "Closes other open buffers, then opens every changed file. Deleted and hidden paths are skipped."
     return ("%s\n\n%s\n\n%s"):format(title, body, scope)
   end
-  local range = edit and base_range(choice) or diffview_range(choice)
+  local range = base_range(choice)
   return ("%s\n\n:DiffviewOpen%s\n\n%s"):format(title, range and (" " .. range) or "", scope)
 end
 
 local function open_base(choice)
-  local range = diffview_range(choice)
+  local range = base_range(choice)
   if range then
     vim.cmd("DiffviewOpen " .. range)
     return
