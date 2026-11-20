@@ -19,7 +19,7 @@ plugins in `dev/` that provide AI coding assistant integration.
 - `lua/plugins/` — Plugin specs (each file returns a lazy.nvim spec table)
 - `dev/claudeide.nvim/` — Custom plugin: WebSocket-based MCP server making Neovim an IDE endpoint for Claude CLI
 - `dev/codechat.nvim/` — Custom plugin: Terminal driver for AI coding agents (Claude, Cursor, ttadk wrappers)
-- `dev/herdr.nvim/` — Custom plugin: Git-anchored review comments sent directly to Herdr agents
+- `dev/herdr.nvim/` — Custom plugin: Git-anchored review comments routed to Herdr or same-workspace cmux agents
 
 ### Custom Plugin: claudeide.nvim
 
@@ -44,11 +44,14 @@ Key subsystems:
 ### Custom Plugin: herdr.nvim
 
 Queues typed review comments plus exact visual selection context for the current
-Git repository, then sends the batch directly to the selected Herdr agent.
+Git repository, detects whether Neovim is hosted by Herdr or cmux, then shows
+only matching agents from that host's current workspace.
 
 Key subsystems:
 - `repo.lua` + `context.lua` + `queue.lua` — Git-root metadata, selected-text anchors, and session-only queues
 - `discovery.lua` — Herdr CLI snapshot discovery and repository matching
+- `cmux.lua` + `targets.lua` — Host detection, same-workspace cmux discovery, agent-process validation, and terminal paste/submit fallback
+- `submit.lua` — Backend dispatch and clear-on-success queue handling
 - `client.lua` — Direct `herdr agent prompt` delivery
 - `input.lua` — Snacks comment float with a `vim.ui.input` fallback
 

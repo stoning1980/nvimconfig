@@ -15,7 +15,7 @@
 -- │ S-F5    : all modes → remote branch, show HEAD, close session        │
 -- │ F6      : n/i/t/c → :GitGrep (git-tracked) | v/s → grep selection    │
 -- │ F7      : n → grep open buffers  |  v → grep selection in buffers    │
--- │ F8      : n → queue line comment | v → queue selection comment      │
+-- │ F8      : n → review line | v → selection; submit one / pick many    │
 -- │ S-F8    : Not mapped.                                                │
 -- │ F9      : n → send file / v → send selection to AI agent (codechat)  │
 -- │ S-F9    : n/v/t → close CodeChat window, terminal, and session       │

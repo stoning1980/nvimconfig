@@ -148,6 +148,12 @@ function M.matches_worktree(file)
 end
 
 ---@param file table
+---@return boolean
+function M.is_worktree(file)
+  return file.rev and file.rev.type == REV_TYPE.LOCAL or false
+end
+
+---@param file table
 ---@param head string
 ---@return boolean
 local function is_current_right_side(file, head)
@@ -202,7 +208,7 @@ function M.snapshot(view, winid, selection, metadata)
   if not (base_file and target_file) then
     return nil, "Diffview file context is unavailable"
   end
-  if base_file.binary or target_file.binary then
+  if target_file.binary or (base_file.binary and not base_file.nulled) then
     return nil, "binary Diffview files cannot be reviewed as text"
   end
   if is_conflict_stage(base_file) or is_conflict_stage(target_file) then

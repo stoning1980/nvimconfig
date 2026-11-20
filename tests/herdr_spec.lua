@@ -2,6 +2,7 @@ local root = vim.fn.getcwd()
 package.path = root .. "/dev/herdr.nvim/lua/?.lua;" .. root .. "/dev/herdr.nvim/lua/?/init.lua;" .. package.path
 
 local context = require("herdr.context")
+local cmux = require("herdr.cmux")
 local config = require("herdr.config")
 local discovery = require("herdr.discovery")
 local diffview = require("herdr.diffview")
@@ -10,6 +11,8 @@ local client = require("herdr.client")
 local input = require("herdr.input")
 local queue = require("herdr.queue")
 local repo = require("herdr.repo")
+local submit = require("herdr.submit")
+local targets = require("herdr.targets")
 
 local function assert_equal(actual, expected, message)
   if actual ~= expected then
@@ -46,6 +49,56 @@ local function test_extracts_only_visual_block_columns()
 end
 
 test_extracts_only_visual_block_columns()
+
+local function test_captures_first_live_visual_selection_before_marks_exist()
+  local original_buf = vim.api.nvim_get_current_buf()
+  local current_win = vim.api.nvim_get_current_win()
+  local file_buf = vim.fn.bufadd(root .. "/tests/herdr_spec.lua")
+  vim.fn.bufload(file_buf)
+  vim.api.nvim_win_set_buf(current_win, file_buf)
+  pcall(vim.api.nvim_buf_del_mark, file_buf, "<")
+  pcall(vim.api.nvim_buf_del_mark, file_buf, ">")
+  vim.api.nvim_win_set_cursor(current_win, { 1, 0 })
+  vim.cmd("normal! v4l")
+
+  local selected = herdr.capture(true)
+
+  vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "nx", false)
+  vim.api.nvim_win_set_buf(current_win, original_buf)
+  assert(selected, "expected live visual selection")
+  assert_equal(selected.start_line, 1)
+  assert_equal(selected.start_col, 0)
+  assert_equal(selected.end_line, 1)
+  assert_equal(selected.end_col, 4)
+  assert_equal(selected.text, "local")
+end
+
+test_captures_first_live_visual_selection_before_marks_exist()
+
+local function test_normalizes_reverse_blockwise_selection_columns_independently()
+  local original_buf = vim.api.nvim_get_current_buf()
+  local current_win = vim.api.nvim_get_current_win()
+  local buf = vim.api.nvim_create_buf(false, false)
+  vim.api.nvim_buf_set_name(buf, root .. "/tests/block-selection-fixture.lua")
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "abcdef", "uvwxyz", "123456" })
+  vim.api.nvim_win_set_buf(current_win, buf)
+  vim.api.nvim_win_set_cursor(current_win, { 3, 1 })
+  vim.cmd("normal! \22" .. "2k3l")
+
+  local selected = herdr.capture(true)
+
+  vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "nx", false)
+  vim.api.nvim_win_set_buf(current_win, original_buf)
+  vim.api.nvim_buf_delete(buf, { force = true })
+  assert(selected, "expected reverse blockwise selection")
+  assert_equal(selected.start_line, 1)
+  assert_equal(selected.start_col, 1)
+  assert_equal(selected.end_line, 3)
+  assert_equal(selected.end_col, 4)
+  assert_equal(selected.text, "bcde\nvwxy\n2345")
+end
+
+test_normalizes_reverse_blockwise_selection_columns_independently()
 
 local BASE_SHA = "1111111111111111111111111111111111111111"
 local TARGET_SHA = "2222222222222222222222222222222222222222"
@@ -232,7 +285,7 @@ end
 test_rejects_custom_revision_as_current_right_side()
 
 local function test_treats_null_counterpart_as_empty_for_added_file()
-  local base = commit_file("lua/new.lua", BASE_SHA, {}, { nulled = true })
+  local base = commit_file("lua/new.lua", BASE_SHA, {}, { nulled = true, binary = true })
   local target = commit_file("lua/new.lua", HEAD_SHA, { "added" })
   local selected, err =
     diffview.snapshot(comparison_view(base, target), 102, version_selection(1, 1, "added"), metadata())
@@ -369,9 +422,8 @@ test_captures_nowrite_diffview_buffer_before_file_guard()
 local function test_rejects_diffview_buffer_that_differs_from_checked_out_file()
   local original_buf = vim.api.nvim_get_current_buf()
   local current_win = vim.api.nvim_get_current_win()
-  local current_revision = repo.for_root(root).revision
   local base = commit_file("lua/example.lua", BASE_SHA, { "old" })
-  local target = commit_file("lua/example.lua", current_revision, { "displayed" })
+  local target = commit_file("lua/example.lua", TARGET_SHA, { "displayed" }, { rev = { type = REV.LOCAL } })
   target.absolute_path = vim.fn.tempname()
   vim.fn.writefile({ "checked out" }, target.absolute_path)
   vim.bo[target.bufnr].buftype = "nowrite"
@@ -420,10 +472,64 @@ local function test_rejects_diffview_buffer_that_differs_from_checked_out_file()
   vim.fn.delete(target.absolute_path)
 
   assert_equal(selected, nil)
-  assert_equal(echoed, "[herdr] right Diffview pane does not match the checked-out file")
+  assert_equal(echoed, "[review] right Diffview pane does not match the checked-out file")
 end
 
 test_rejects_diffview_buffer_that_differs_from_checked_out_file()
+
+local function test_accepts_head_commit_when_worktree_has_moved_on()
+  local original_buf = vim.api.nvim_get_current_buf()
+  local current_win = vim.api.nvim_get_current_win()
+  local current_revision = repo.for_root(root).revision
+  local base = commit_file("lua/example.lua", BASE_SHA, { "old" })
+  local target = commit_file("lua/example.lua", current_revision, { "head version" })
+  target.absolute_path = vim.fn.tempname()
+  vim.fn.writefile({ "worktree version" }, target.absolute_path)
+  vim.bo[target.bufnr].buftype = "nowrite"
+  vim.api.nvim_win_set_buf(current_win, target.bufnr)
+  vim.api.nvim_win_set_cursor(current_win, { 1, 0 })
+
+  local old_lib = package.loaded["diffview.lib"]
+  package.loaded["diffview.lib"] = {
+    get_current_view = function()
+      return {
+        adapter = { ctx = { toplevel = root } },
+        cur_layout = {
+          windows = {
+            {
+              id = 987654,
+              file = base,
+              is_file_open = function()
+                return true
+              end,
+            },
+            {
+              id = current_win,
+              file = target,
+              is_file_open = function()
+                return true
+              end,
+            },
+          },
+        },
+      }
+    end,
+  }
+
+  local selected = herdr.capture(false)
+
+  package.loaded["diffview.lib"] = old_lib
+  vim.api.nvim_win_set_buf(current_win, original_buf)
+  vim.fn.delete(target.absolute_path)
+
+  assert(selected, "expected HEAD commit selection")
+  assert_equal(selected.path, "lua/example.lua")
+  assert_equal(selected.text, "head version")
+  assert(selected.change.patch:find("%-old"))
+  assert(selected.change.patch:find("%+head version"))
+end
+
+test_accepts_head_commit_when_worktree_has_moved_on()
 
 local function test_captures_ordinary_file_in_extra_diffview_tab_split()
   local original_buf = vim.api.nvim_get_current_buf()
@@ -469,13 +575,20 @@ local function test_matches_agents_by_workspace_path()
     result = {
       snapshot = {
         agents = {
-          { agent = "claude", agent_status = "idle", cwd = "/work/app", pane_id = "w1:p1" },
-          { agent = "cursor", agent_status = "working", foreground_cwd = "/work/app/subdir", pane_id = "w1:p2" },
-          { agent = "codex", agent_status = "idle", cwd = "/elsewhere", pane_id = "w2:p1" },
+          { agent = "claude", agent_status = "idle", cwd = "/work/app", pane_id = "w1:p1", workspace_id = "w1" },
+          {
+            agent = "cursor",
+            agent_status = "working",
+            foreground_cwd = "/work/app/subdir",
+            pane_id = "w1:p2",
+            workspace_id = "w1",
+          },
+          { agent = "codex", agent_status = "idle", cwd = "/work/app", pane_id = "w2:p1", workspace_id = "w2" },
+          { agent = "codex", agent_status = "idle", cwd = "/elsewhere", pane_id = "w1:p3", workspace_id = "w1" },
         },
       },
     },
-  }, "/work/app")
+  }, "/work/app", "w1")
 
   assert_equal(#agents, 2)
   assert_equal(agents[1].pane_id, "w1:p1")
@@ -489,6 +602,719 @@ local function test_uses_snapshot_command_without_json_flag()
 end
 
 test_uses_snapshot_command_without_json_flag()
+
+local function test_labels_herdr_and_cmux_picker_targets()
+  local herdr_targets = targets.herdr({
+    { agent = "cursor", agent_status = "working", agent_id = "agent-1" },
+  })
+  local cmux_targets = cmux.targets({
+    sessions = {
+      {
+        agent = "claude",
+        agent_display_name = "Claude Code",
+        agent_lifecycle = "idle",
+        active_for_surface = true,
+        session_id = "session-claude",
+        surface_id = "surface-claude",
+      },
+    },
+  }, "Review workspace")
+
+  assert_equal(targets.label(herdr_targets[1]), "[Herdr] cursor [working] agent-1")
+  assert_equal(targets.label(cmux_targets[1]), "[cmux] Claude Code [idle] Review workspace")
+  assert_equal(
+    targets.label({
+      backend = "cmux_terminal",
+      agent = "Cursor Agent",
+      workspace = "Review workspace",
+    }),
+    "[cmux terminal] Cursor Agent [paste + submit] Review workspace"
+  )
+end
+
+test_labels_herdr_and_cmux_picker_targets()
+
+local function test_uses_only_herdr_inside_herdr()
+  local original_herdr = discovery.for_repo
+  local original_cmux = cmux.discover
+  local original_herdr_env = vim.env.HERDR_ENV
+  local original_herdr_workspace = vim.env.HERDR_WORKSPACE_ID
+  local original_cmux_surface = vim.env.CMUX_SURFACE_ID
+  local herdr_called, cmux_called
+  vim.env.HERDR_ENV = "1"
+  vim.env.HERDR_WORKSPACE_ID = "w1"
+  vim.env.CMUX_SURFACE_ID = "surface-cmux"
+  discovery.for_repo = function(_, callback)
+    herdr_called = true
+    callback({ { agent = "cursor", agent_status = "working", agent_id = "agent-1" } }, nil)
+  end
+  cmux.discover = function(callback)
+    cmux_called = true
+    callback({
+      {
+        backend = "cmux",
+        id = "surface-claude",
+        agent = "Claude Code",
+        status = "idle",
+        workspace = "Review workspace",
+      },
+    }, nil)
+  end
+
+  local discovered, discovery_error
+  targets.discover("/work/app", function(result, err)
+    discovered, discovery_error = result, err
+  end)
+
+  discovery.for_repo = original_herdr
+  cmux.discover = original_cmux
+  vim.env.HERDR_ENV = original_herdr_env
+  vim.env.HERDR_WORKSPACE_ID = original_herdr_workspace
+  vim.env.CMUX_SURFACE_ID = original_cmux_surface
+  assert_equal(discovery_error, nil)
+  assert_equal(herdr_called, true)
+  assert_equal(cmux_called, nil)
+  assert_equal(#discovered, 1)
+  assert_equal(discovered[1].backend, "herdr")
+end
+
+test_uses_only_herdr_inside_herdr()
+
+local function test_uses_only_cmux_inside_cmux()
+  local original_herdr = discovery.for_repo
+  local original_cmux = cmux.discover
+  local original_herdr_env = vim.env.HERDR_ENV
+  local original_cmux_surface = vim.env.CMUX_SURFACE_ID
+  local herdr_called, cmux_called
+  vim.env.HERDR_ENV = nil
+  vim.env.CMUX_SURFACE_ID = "surface-cmux"
+  discovery.for_repo = function(_, callback)
+    herdr_called = true
+    callback({ { agent = "cursor", agent_status = "working", agent_id = "agent-1" } }, nil)
+  end
+  cmux.discover = function(callback)
+    cmux_called = true
+    callback({
+      {
+        backend = "cmux",
+        id = "surface-claude",
+        agent = "Claude Code",
+        status = "idle",
+        workspace = "Review workspace",
+      },
+    }, nil)
+  end
+
+  local discovered, discovery_error
+  targets.discover("/work/app", function(result, err)
+    discovered, discovery_error = result, err
+  end)
+
+  discovery.for_repo = original_herdr
+  cmux.discover = original_cmux
+  vim.env.HERDR_ENV = original_herdr_env
+  vim.env.CMUX_SURFACE_ID = original_cmux_surface
+  assert_equal(discovery_error, nil)
+  assert_equal(herdr_called, nil)
+  assert_equal(cmux_called, true)
+  assert_equal(#discovered, 1)
+  assert_equal(discovered[1].backend, "cmux")
+end
+
+test_uses_only_cmux_inside_cmux()
+
+local function test_discovers_supported_active_cmux_sessions()
+  local targets = cmux.targets({
+    sessions = {
+      {
+        agent = "claude",
+        agent_display_name = "Claude Code",
+        agent_lifecycle = "idle",
+        active_for_surface = true,
+        session_id = "session-claude",
+        surface_id = "surface-claude",
+        workspace_id = "workspace-current",
+      },
+      {
+        agent = "cursor",
+        agent_display_name = "Cursor",
+        agent_lifecycle = "running",
+        active_for_surface = true,
+        surface_id = "surface-cursor",
+        workspace_id = "workspace-current",
+      },
+      {
+        agent = "codex",
+        agent_display_name = "Codex",
+        agent_lifecycle = "running",
+        active_for_surface = false,
+        surface_id = "surface-stale",
+        workspace_id = "workspace-current",
+      },
+    },
+  }, "Current workspace")
+
+  assert_equal(#targets, 1)
+  assert_equal(targets[1].backend, "cmux")
+  assert_equal(targets[1].id, "surface-claude")
+  assert_equal(targets[1].agent, "Claude Code")
+  assert_equal(targets[1].status, "idle")
+  assert_equal(targets[1].workspace, "Current workspace")
+end
+
+test_discovers_supported_active_cmux_sessions()
+
+local function test_builds_cmux_discovery_from_caller_workspace()
+  local context_info = cmux.workspace({
+    caller = { workspace_id = "workspace-current", workspace_ref = "workspace:7" },
+    windows = {
+      {
+        workspaces = {
+          { id = "workspace-other", title = "Other workspace" },
+          { id = "workspace-current", title = "Review workspace" },
+        },
+      },
+    },
+  })
+
+  assert_equal(context_info.id, "workspace-current")
+  assert_equal(context_info.ref, "workspace:7")
+  assert_equal(context_info.title, "Review workspace")
+  assert_equal(
+    table.concat(cmux.sessions_command(context_info.id), " "),
+    "cmux sessions list --workspace workspace-current --json"
+  )
+end
+
+test_builds_cmux_discovery_from_caller_workspace()
+
+local function test_finds_only_sibling_terminals_in_callers_cmux_workspace()
+  local tree = {
+    caller = {
+      workspace_id = "workspace-current",
+      workspace_ref = "workspace:7",
+      surface_ref = "surface:caller",
+    },
+    windows = {
+      {
+        workspaces = {
+          {
+            id = "workspace-current",
+            title = "Review workspace",
+            panes = {
+              { surfaces = { { ref = "surface:caller", type = "terminal", title = "Neovim" } } },
+              { surfaces = { { ref = "surface:agent", type = "terminal", title = "Cursor Agent" } } },
+              { surfaces = { { ref = "surface:shell", type = "terminal", title = "Shell" } } },
+              { surfaces = { { ref = "surface:ambiguous", type = "terminal", title = "Ambiguous" } } },
+              { surfaces = { { ref = "surface:browser", type = "browser", title = "Browser" } } },
+            },
+          },
+          {
+            id = "workspace-other",
+            title = "Other workspace",
+            panes = {
+              { surfaces = { { ref = "surface:other", type = "terminal", title = "Other Agent" } } },
+            },
+          },
+        },
+      },
+    },
+  }
+  local processes = {
+    windows = {
+      {
+        workspaces = {
+          {
+            id = "workspace-current",
+            panes = {
+              {
+                surfaces = {
+                  {
+                    ref = "surface:agent",
+                    foreground_pgids = { 42 },
+                    processes = {
+                      {
+                        name = "node",
+                        path = "/Users/test/.local/share/cursor-agent/versions/current/node",
+                        pid = 42,
+                        pgid = 42,
+                        children = {},
+                      },
+                    },
+                  },
+                },
+              },
+              {
+                surfaces = {
+                  {
+                    ref = "surface:shell",
+                    foreground_pgids = { 7 },
+                    processes = {
+                      {
+                        name = "bash",
+                        path = "/bin/bash",
+                        pid = 7,
+                        pgid = 7,
+                        children = {
+                          {
+                            name = "node",
+                            path = "/Users/test/.local/share/cursor-agent/versions/current/node",
+                            pid = 99,
+                            pgid = 99,
+                            children = {},
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+              {
+                surfaces = {
+                  {
+                    ref = "surface:ambiguous",
+                    foreground_pgids = { 50 },
+                    processes = {
+                      {
+                        name = "claude",
+                        path = "/usr/local/bin/claude",
+                        pid = 50,
+                        pgid = 50,
+                        children = {},
+                      },
+                      {
+                        name = "codex",
+                        path = "/usr/local/bin/codex",
+                        pid = 51,
+                        pgid = 50,
+                        children = {},
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  }
+  local workspace = cmux.workspace(tree)
+  local terminal_targets = cmux.terminal_targets(tree, workspace, processes)
+
+  assert_equal(#terminal_targets, 1)
+  assert_equal(terminal_targets[1].backend, "cmux_terminal")
+  assert_equal(terminal_targets[1].id, "surface:agent")
+  assert_equal(terminal_targets[1].agent, "Cursor")
+  assert_equal(terminal_targets[1].workspace, "Review workspace")
+  assert_equal(terminal_targets[1].process_id, 42)
+end
+
+test_finds_only_sibling_terminals_in_callers_cmux_workspace()
+
+local function test_discovers_cmux_targets_in_callers_workspace()
+  local original_system = vim.system
+  local original_surface = vim.env.CMUX_SURFACE_ID
+  local calls = {}
+  vim.env.CMUX_SURFACE_ID = "surface-caller"
+  vim.system = function(command, _, callback)
+    calls[#calls + 1] = table.concat(command, " ")
+    if command[2] == "tree" then
+      callback({
+        code = 0,
+        stdout = vim.json.encode({
+          caller = { workspace_id = "workspace-current", workspace_ref = "workspace:7" },
+          windows = { { workspaces = { { id = "workspace-current", title = "Review workspace" } } } },
+        }),
+        stderr = "",
+      })
+    else
+      callback({
+        code = 0,
+        stdout = vim.json.encode({
+          sessions = {
+            {
+              agent = "claude",
+              agent_display_name = "Claude Code",
+              agent_lifecycle = "idle",
+              active_for_surface = true,
+              session_id = "session-claude",
+              surface_id = "surface-claude",
+            },
+          },
+        }),
+        stderr = "",
+      })
+    end
+  end
+
+  local discovered, discovery_error
+  cmux.discover(function(targets, err)
+    discovered, discovery_error = targets, err
+  end)
+  vim.wait(100, function()
+    return discovered ~= nil or discovery_error ~= nil
+  end)
+
+  vim.system = original_system
+  vim.env.CMUX_SURFACE_ID = original_surface
+  assert_equal(discovery_error, nil)
+  assert_equal(#discovered, 1)
+  assert_equal(discovered[1].id, "surface-claude")
+  assert(vim.deep_equal(calls, {
+    "cmux tree --all --json",
+    "cmux sessions list --workspace workspace-current --json",
+  }))
+end
+
+test_discovers_cmux_targets_in_callers_workspace()
+
+local function test_falls_back_to_sibling_terminal_when_cmux_has_no_message_receiver()
+  local original_system = vim.system
+  local original_surface = vim.env.CMUX_SURFACE_ID
+  vim.env.CMUX_SURFACE_ID = "surface-caller"
+  vim.system = function(command, _, callback)
+    if command[2] == "tree" then
+      callback({
+        code = 0,
+        stdout = vim.json.encode({
+          caller = {
+            workspace_id = "workspace-current",
+            workspace_ref = "workspace:7",
+            surface_ref = "surface:caller",
+          },
+          windows = {
+            {
+              workspaces = {
+                {
+                  id = "workspace-current",
+                  title = "Review workspace",
+                  panes = {
+                    { surfaces = { { ref = "surface:caller", type = "terminal", title = "Neovim" } } },
+                    { surfaces = { { ref = "surface:cursor", type = "terminal", title = "Cursor Agent" } } },
+                  },
+                },
+              },
+            },
+          },
+        }),
+        stderr = "",
+      })
+    elseif command[2] == "sessions" then
+      callback({ code = 0, stdout = vim.json.encode({ sessions = {} }), stderr = "" })
+    else
+      assert_equal(table.concat(command, " "), "cmux top --workspace workspace-current --processes --json")
+      callback({
+        code = 0,
+        stdout = vim.json.encode({
+          windows = {
+            {
+              workspaces = {
+                {
+                  id = "workspace-current",
+                  panes = {
+                    {
+                      surfaces = {
+                        {
+                          ref = "surface:cursor",
+                          foreground_pgids = { 42 },
+                          processes = {
+                            {
+                              name = "node",
+                              path = "/Users/test/.local/share/cursor-agent/versions/current/node",
+                              pid = 42,
+                              pgid = 42,
+                              children = {},
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        }),
+        stderr = "",
+      })
+    end
+  end
+
+  local discovered, discovery_error
+  cmux.discover(function(found, err)
+    discovered, discovery_error = found, err
+  end)
+  vim.wait(100, function()
+    return discovered ~= nil or discovery_error ~= nil
+  end)
+
+  vim.system = original_system
+  vim.env.CMUX_SURFACE_ID = original_surface
+  assert_equal(discovery_error, nil)
+  assert_equal(#discovered, 1)
+  assert_equal(discovered[1].backend, "cmux_terminal")
+  assert_equal(discovered[1].id, "surface:cursor")
+end
+
+test_falls_back_to_sibling_terminal_when_cmux_has_no_message_receiver()
+
+local function test_rejects_cmux_target_that_moved_out_of_callers_workspace()
+  local original_system = vim.system
+  vim.system = function(command, _, callback)
+    assert_equal(table.concat(command, " "), "cmux tree --all --json")
+    callback({
+      code = 0,
+      stdout = vim.json.encode({
+        caller = {
+          workspace_id = "workspace-current",
+          workspace_ref = "workspace:7",
+          surface_ref = "surface:caller",
+        },
+        windows = {
+          {
+            workspaces = {
+              {
+                id = "workspace-current",
+                title = "Review workspace",
+                panes = {
+                  { surfaces = { { ref = "surface:caller", type = "terminal", title = "Neovim" } } },
+                },
+              },
+              {
+                id = "workspace-other",
+                title = "Other workspace",
+                panes = {
+                  { surfaces = { { ref = "surface:agent", type = "terminal", title = "Moved Agent" } } },
+                },
+              },
+            },
+          },
+        },
+      }),
+      stderr = "",
+    })
+  end
+
+  local current_target, revalidation_error
+  cmux.revalidate({
+    backend = "cmux_terminal",
+    id = "surface:agent",
+    workspace_id = "workspace-current",
+  }, function(target, err)
+    current_target, revalidation_error = target, err
+  end)
+  vim.wait(100, function()
+    return current_target ~= nil or revalidation_error ~= nil
+  end)
+
+  vim.system = original_system
+  assert_equal(current_target, nil)
+  assert_equal(revalidation_error, "cmux target is no longer in Neovim's workspace")
+end
+
+test_rejects_cmux_target_that_moved_out_of_callers_workspace()
+
+local function test_rejects_replaced_agent_on_same_cmux_surface()
+  local original_system = vim.system
+  vim.system = function(command, _, callback)
+    if command[2] == "tree" then
+      callback({
+        code = 0,
+        stdout = vim.json.encode({
+          caller = {
+            workspace_id = "workspace-current",
+            workspace_ref = "workspace:7",
+            surface_ref = "surface:caller",
+          },
+          windows = {
+            {
+              workspaces = {
+                {
+                  id = "workspace-current",
+                  title = "Review workspace",
+                  panes = {
+                    { surfaces = { { ref = "surface:caller", type = "terminal", title = "Neovim" } } },
+                    { surfaces = { { ref = "surface:agent", type = "terminal", title = "Cursor Agent" } } },
+                  },
+                },
+              },
+            },
+          },
+        }),
+        stderr = "",
+      })
+    else
+      callback({
+        code = 0,
+        stdout = vim.json.encode({
+          windows = {
+            {
+              workspaces = {
+                {
+                  id = "workspace-current",
+                  panes = {
+                    {
+                      surfaces = {
+                        {
+                          ref = "surface:agent",
+                          foreground_pgids = { 43 },
+                          processes = {
+                            {
+                              name = "node",
+                              path = "/Users/test/.local/share/cursor-agent/versions/current/node",
+                              pid = 43,
+                              pgid = 43,
+                              children = {},
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        }),
+        stderr = "",
+      })
+    end
+  end
+
+  local current_target, revalidation_error
+  cmux.revalidate({
+    backend = "cmux_terminal",
+    id = "surface:agent",
+    agent = "Cursor",
+    workspace_id = "workspace-current",
+    process_id = 42,
+    process_pgid = 42,
+    process_path = "/Users/test/.local/share/cursor-agent/versions/current/node",
+  }, function(target, err)
+    current_target, revalidation_error = target, err
+  end)
+  vim.wait(100, function()
+    return current_target ~= nil or revalidation_error ~= nil
+  end)
+
+  vim.system = original_system
+  assert_equal(current_target, nil)
+  assert_equal(revalidation_error, "cmux target agent changed before delivery")
+end
+
+test_rejects_replaced_agent_on_same_cmux_surface()
+
+local function test_rejects_herdr_target_that_left_repo_or_workspace()
+  local original_discover = discovery.for_repo
+  local original_herdr_env = vim.env.HERDR_ENV
+  local original_herdr_workspace = vim.env.HERDR_WORKSPACE_ID
+  vim.env.HERDR_ENV = "1"
+  vim.env.HERDR_WORKSPACE_ID = "w1"
+  discovery.for_repo = function(repo_root, callback)
+    assert_equal(repo_root, "/work/app")
+    callback({
+      { agent = "cursor", agent_status = "idle", agent_id = "different-agent", workspace_id = "w1" },
+    }, nil)
+  end
+
+  local current_target, revalidation_error
+  targets.revalidate("/work/app", {
+    backend = "herdr",
+    id = "original-agent",
+    workspace_id = "w1",
+  }, function(target, err)
+    current_target, revalidation_error = target, err
+  end)
+
+  discovery.for_repo = original_discover
+  vim.env.HERDR_ENV = original_herdr_env
+  vim.env.HERDR_WORKSPACE_ID = original_herdr_workspace
+  assert_equal(current_target, nil)
+  assert_equal(revalidation_error, "Herdr target is no longer in this repository and workspace")
+end
+
+test_rejects_herdr_target_that_left_repo_or_workspace()
+
+local function test_revalidation_fails_when_host_identity_changes()
+  local original_herdr_env = vim.env.HERDR_ENV
+  local original_herdr_workspace = vim.env.HERDR_WORKSPACE_ID
+  local original_cmux_surface = vim.env.CMUX_SURFACE_ID
+  local original_herdr_discover = discovery.for_repo
+  local original_cmux_revalidate = cmux.revalidate
+  local herdr_discovered, cmux_revalidated
+  discovery.for_repo = function()
+    herdr_discovered = true
+  end
+  cmux.revalidate = function()
+    cmux_revalidated = true
+  end
+
+  vim.env.HERDR_ENV = nil
+  vim.env.HERDR_WORKSPACE_ID = nil
+  vim.env.CMUX_SURFACE_ID = "surface-cmux"
+  local _, herdr_error
+  targets.revalidate("/work/app", {
+    backend = "herdr",
+    id = "agent-1",
+    workspace_id = "w1",
+  }, function(_, err)
+    herdr_error = err
+  end)
+
+  vim.env.HERDR_ENV = "1"
+  vim.env.HERDR_WORKSPACE_ID = "w1"
+  local _, cmux_error
+  targets.revalidate("/work/app", {
+    backend = "cmux_terminal",
+    id = "surface:agent",
+    workspace_id = "workspace-current",
+  }, function(_, err)
+    cmux_error = err
+  end)
+
+  discovery.for_repo = original_herdr_discover
+  cmux.revalidate = original_cmux_revalidate
+  vim.env.HERDR_ENV = original_herdr_env
+  vim.env.HERDR_WORKSPACE_ID = original_herdr_workspace
+  vim.env.CMUX_SURFACE_ID = original_cmux_surface
+  assert_equal(herdr_discovered, nil)
+  assert_equal(cmux_revalidated, nil)
+  assert_equal(herdr_error, "Neovim is no longer running inside Herdr")
+  assert_equal(cmux_error, "Neovim is no longer running exclusively inside cmux")
+end
+
+test_revalidation_fails_when_host_identity_changes()
+
+local function test_cmux_revalidation_itself_fails_after_host_change()
+  local original_herdr_env = vim.env.HERDR_ENV
+  local original_cmux_surface = vim.env.CMUX_SURFACE_ID
+  local original_system = vim.system
+  local system_called
+  vim.env.HERDR_ENV = "1"
+  vim.env.CMUX_SURFACE_ID = "surface-cmux"
+  vim.system = function()
+    system_called = true
+  end
+
+  local current_target, revalidation_error
+  cmux.revalidate({
+    backend = "cmux_terminal",
+    id = "surface:agent",
+    workspace_id = "workspace-current",
+  }, function(target, err)
+    current_target, revalidation_error = target, err
+  end)
+
+  vim.system = original_system
+  vim.env.HERDR_ENV = original_herdr_env
+  vim.env.CMUX_SURFACE_ID = original_cmux_surface
+  assert_equal(system_called, nil)
+  assert_equal(current_target, nil)
+  assert_equal(revalidation_error, "Neovim is no longer running exclusively inside cmux")
+end
+
+test_cmux_revalidation_itself_fails_after_host_change()
 
 local function test_builds_direct_review_prompt()
   local prompt = client.review_prompt({
@@ -586,6 +1412,274 @@ end
 
 test_keeps_each_before_and_current_patch_in_queue_prompt()
 
+local function test_sends_cmux_queue_to_exact_agent_surface()
+  local original_system = vim.system
+  local command_seen, options_seen
+  vim.system = function(command, options, callback)
+    command_seen, options_seen = command, options
+    callback({ code = 0, stdout = vim.json.encode({ recipient_has_agent = true }), stderr = "" })
+  end
+
+  local ok_result, error_result
+  cmux.send_queue({ id = "surface-claude" }, {
+    {
+      selection = {
+        path = "lua/example.lua",
+        start_line = 12,
+        end_line = 12,
+        text = "run()",
+        branch = "main",
+        revision = "abc123",
+      },
+      comment = "Please review this.",
+    },
+  }, function(ok, err)
+    ok_result, error_result = ok, err
+  end)
+  vim.wait(100, function()
+    return ok_result ~= nil
+  end)
+
+  vim.system = original_system
+  assert_equal(ok_result, true)
+  assert_equal(error_result, nil)
+  assert_equal(table.concat(command_seen, " "), "cmux agent message surface-claude --from Neovim --json -")
+  assert(options_seen.stdin:find("Please review this.", 1, true))
+end
+
+test_sends_cmux_queue_to_exact_agent_surface()
+
+local function test_submits_queue_to_sibling_terminal()
+  local original_system = vim.system
+  local command_seen, options_seen
+  vim.system = function(command, options, callback)
+    command_seen, options_seen = command, options
+    callback({ code = 0, stdout = "OK", stderr = "" })
+  end
+
+  local ok_result, error_result
+  cmux.send_queue({ backend = "cmux_terminal", id = "surface:cursor", workspace_id = "workspace-current" }, {
+    {
+      selection = {
+        path = "lua/example.lua",
+        start_line = 12,
+        end_line = 12,
+        text = "run()",
+        branch = "main",
+        revision = "abc123",
+      },
+      comment = "Please review this.",
+    },
+  }, function(ok, err)
+    ok_result, error_result = ok, err
+  end)
+  vim.wait(100, function()
+    return ok_result ~= nil
+  end)
+
+  vim.system = original_system
+  assert_equal(ok_result, true)
+  assert_equal(error_result, nil)
+  assert_equal(
+    table.concat(command_seen, " "),
+    "cmux paste --workspace workspace-current --surface surface:cursor --submit -"
+  )
+  assert(vim.tbl_contains(command_seen, "--submit"))
+  assert(options_seen.stdin:find("Please review this.", 1, true))
+end
+
+test_submits_queue_to_sibling_terminal()
+
+local function test_chunks_large_cmux_terminal_prompt_before_submitting()
+  local original_system = vim.system
+  local original_revalidate = cmux.revalidate
+  local calls = {}
+  vim.system = function(command, options, callback)
+    calls[#calls + 1] = { command = command, stdin = options.stdin }
+    callback({ code = 0, stdout = "OK", stderr = "" })
+  end
+  cmux.revalidate = function(target, callback)
+    callback(target, nil)
+  end
+
+  local items = {
+    {
+      selection = {
+        path = "lua/example.lua",
+        start_line = 12,
+        end_line = 12,
+        text = "run()",
+        branch = "main",
+        revision = "abc123",
+      },
+      comment = string.rep('review "界" \\\\ this line\n', 300),
+    },
+  }
+  local expected_prompt = client.queue_prompt(items)
+  local ok_result, error_result
+  cmux.send_queue(
+    {
+      backend = "cmux_terminal",
+      id = "surface:cursor",
+      agent = "Cursor",
+      workspace_id = "workspace-current",
+      process_id = 42,
+      process_pgid = 42,
+      process_path = "/Users/test/.local/share/cursor-agent/versions/current/node",
+    },
+    items,
+    function(ok, err)
+      ok_result, error_result = ok, err
+    end
+  )
+  vim.wait(1000, function()
+    return ok_result ~= nil
+  end)
+
+  vim.system = original_system
+  cmux.revalidate = original_revalidate
+  assert_equal(ok_result, true)
+  assert_equal(error_result, nil)
+  assert(#calls > 1, "expected a large prompt to use multiple cmux requests")
+  local chunks = {}
+  for index, call in ipairs(calls) do
+    chunks[#chunks + 1] = call.stdin
+    assert(#call.stdin <= 1400, "cmux paste chunk exceeded safe request size")
+    assert(pcall(vim.str_utfindex, call.stdin), "cmux paste chunk split a UTF-8 character")
+    assert_equal(vim.tbl_contains(call.command, "--force"), index > 1)
+    assert_equal(vim.tbl_contains(call.command, "--submit"), index == #calls)
+  end
+  assert_equal(table.concat(chunks), expected_prompt)
+end
+
+test_chunks_large_cmux_terminal_prompt_before_submitting()
+
+local function test_stops_chunked_paste_when_agent_changes_mid_transfer()
+  local original_system = vim.system
+  local original_revalidate = cmux.revalidate
+  local paste_count, revalidate_count = 0, 0
+  vim.system = function(command, _, callback)
+    assert_equal(command[2], "paste")
+    paste_count = paste_count + 1
+    callback({ code = 0, stdout = "OK", stderr = "" })
+  end
+  cmux.revalidate = function(_, callback)
+    revalidate_count = revalidate_count + 1
+    callback(nil, "cmux target agent changed before delivery")
+  end
+
+  local ok_result, error_result
+  cmux.send_queue({
+    backend = "cmux_terminal",
+    id = "surface:cursor",
+    agent = "Cursor",
+    workspace_id = "workspace-current",
+    process_id = 42,
+    process_pgid = 42,
+    process_path = "/Users/test/.local/share/cursor-agent/versions/current/node",
+  }, {
+    {
+      selection = { path = "lua/example.lua", start_line = 1, text = "run()" },
+      comment = string.rep("large review comment\n", 300),
+    },
+  }, function(ok, err)
+    ok_result, error_result = ok, err
+  end)
+  vim.wait(1000, function()
+    return ok_result ~= nil
+  end)
+
+  vim.system = original_system
+  cmux.revalidate = original_revalidate
+  assert_equal(ok_result, false)
+  assert_equal(error_result, "cmux target agent changed before delivery")
+  assert_equal(paste_count, 1)
+  assert_equal(revalidate_count, 1)
+end
+
+test_stops_chunked_paste_when_agent_changes_mid_transfer()
+
+local function test_falls_back_to_chunked_paste_for_large_cmux_agent_message()
+  local original_system = vim.system
+  local original_revalidate = cmux.revalidate
+  local calls = {}
+  vim.system = function(command, options, callback)
+    calls[#calls + 1] = { command = command, stdin = options.stdin }
+    callback({ code = 0, stdout = "OK", stderr = "" })
+  end
+  cmux.revalidate = function(target, callback)
+    callback(target, nil)
+  end
+
+  local items = {
+    {
+      selection = {
+        path = "lua/example.lua",
+        start_line = 1,
+        text = "run()",
+        branch = "main",
+        revision = "abc123",
+      },
+      comment = string.rep("large review comment\n", 300),
+    },
+  }
+  local ok_result, error_result
+  cmux.send_queue(
+    {
+      backend = "cmux",
+      id = "surface-agent-uuid",
+      workspace_id = "workspace-current",
+      session_id = "session-agent",
+    },
+    items,
+    function(ok, err)
+      ok_result, error_result = ok, err
+    end
+  )
+  vim.wait(1000, function()
+    return ok_result ~= nil
+  end)
+
+  vim.system = original_system
+  cmux.revalidate = original_revalidate
+  assert_equal(ok_result, true)
+  assert_equal(error_result, nil)
+  assert(#calls > 1, "expected large agent message to use chunked paste")
+  for index, call in ipairs(calls) do
+    assert_equal(call.command[2], "paste")
+    assert_equal(vim.tbl_contains(call.command, "--force"), index > 1)
+    assert_equal(vim.tbl_contains(call.command, "--submit"), index == #calls)
+  end
+end
+
+test_falls_back_to_chunked_paste_for_large_cmux_agent_message()
+
+local function test_rejects_cmux_surface_without_live_agent()
+  local original_system = vim.system
+  vim.system = function(_, _, callback)
+    callback({ code = 0, stdout = vim.json.encode({ recipient_has_agent = false }), stderr = "" })
+  end
+
+  local ok_result, error_result
+  cmux.send_queue({ id = "surface-shell" }, {
+    {
+      selection = { path = "lua/example.lua", start_line = 1, text = "run()" },
+      comment = "Review this.",
+    },
+  }, function(ok, err)
+    ok_result, error_result = ok, err
+  end)
+  vim.wait(100, function()
+    return ok_result ~= nil
+  end)
+
+  vim.system = original_system
+  assert_equal(ok_result, false)
+  assert_equal(error_result, "cmux target no longer has a live agent; queued comments were kept")
+end
+
+test_rejects_cmux_surface_without_live_agent()
+
 local function test_keeps_review_comments_in_separate_repo_queues()
   queue.clear("/work/app")
   queue.clear("/work/other")
@@ -617,6 +1711,256 @@ local function test_keeps_review_comments_in_separate_repo_queues()
 end
 
 test_keeps_review_comments_in_separate_repo_queues()
+
+local function test_clears_queue_only_after_successful_delivery()
+  local root_path = "/work/submit"
+  queue.clear(root_path)
+  queue.add({
+    repo_root = root_path,
+    path = "lua/example.lua",
+    start_line = 1,
+    text = "run()",
+  }, "Review this.")
+
+  local failure
+  submit.send(root_path, { backend = "cmux", id = "surface-agent" }, function(ok, err)
+    failure = { ok = ok, err = err }
+  end, {
+    send_queue = function(_, _, callback)
+      callback(false, "delivery failed")
+    end,
+  })
+  assert_equal(failure.ok, false)
+  assert_equal(queue.count(root_path), 1)
+
+  local success
+  submit.send(root_path, { backend = "cmux", id = "surface-agent" }, function(ok, err)
+    success = { ok = ok, err = err }
+  end, {
+    send_queue = function(_, _, callback)
+      callback(true, nil)
+    end,
+  })
+  assert_equal(success.ok, true)
+  assert_equal(queue.count(root_path), 0)
+end
+
+test_clears_queue_only_after_successful_delivery()
+
+local function test_success_removes_only_submitted_queue_snapshot()
+  local root_path = "/work/queue-snapshot"
+  local finish
+  queue.clear(root_path)
+  queue.add({
+    repo_root = root_path,
+    path = "lua/first.lua",
+    start_line = 1,
+    text = "first()",
+  }, "First review.")
+
+  submit.send(root_path, { backend = "cmux_terminal", id = "surface:cursor" }, function() end, {
+    send_queue = function(_, _, callback)
+      finish = callback
+    end,
+  })
+  queue.add({
+    repo_root = root_path,
+    path = "lua/second.lua",
+    start_line = 2,
+    text = "second()",
+  }, "Second review.")
+  finish(true, nil)
+
+  assert_equal(queue.count(root_path), 1)
+  assert_equal(queue.items(root_path)[1].comment, "Second review.")
+end
+
+test_success_removes_only_submitted_queue_snapshot()
+
+local function test_serializes_submissions_per_repository()
+  local root_path = "/work/serialized-submit"
+  local finish
+  local send_count = 0
+  local transport = {
+    send_queue = function(_, _, callback)
+      send_count = send_count + 1
+      finish = callback
+    end,
+  }
+  queue.clear(root_path)
+  queue.add({
+    repo_root = root_path,
+    path = "lua/example.lua",
+    start_line = 1,
+    text = "run()",
+  }, "Review this.")
+
+  submit.send(root_path, { backend = "cmux_terminal", id = "surface:cursor" }, function() end, transport)
+  local second_result
+  submit.send(root_path, { backend = "cmux_terminal", id = "surface:cursor" }, function(ok, err)
+    second_result = { ok = ok, err = err }
+  end, transport)
+
+  assert_equal(send_count, 1)
+  assert_equal(second_result.ok, false)
+  assert_equal(second_result.err, "review comments are already being submitted for this repository")
+  finish(false, "test cleanup")
+end
+
+test_serializes_submissions_per_repository()
+
+local function test_dispatches_cmux_terminal_target_to_cmux_transport()
+  local root_path = "/work/cmux-terminal"
+  local original_send = cmux.send_queue
+  local original_revalidate = targets.revalidate
+  local dispatched
+  queue.clear(root_path)
+  queue.add({
+    repo_root = root_path,
+    path = "lua/example.lua",
+    start_line = 1,
+    text = "run()",
+  }, "Review this.")
+  cmux.send_queue = function(target, _, callback)
+    dispatched = target
+    callback(true, nil)
+  end
+  targets.revalidate = function(_, target, callback)
+    callback(target, nil)
+  end
+
+  local result
+  submit.send(root_path, { backend = "cmux_terminal", id = "surface:cursor" }, function(ok, err)
+    result = { ok = ok, err = err }
+  end)
+
+  cmux.send_queue = original_send
+  targets.revalidate = original_revalidate
+  assert_equal(result.ok, true)
+  assert_equal(result.err, nil)
+  assert_equal(dispatched.id, "surface:cursor")
+  assert_equal(queue.count(root_path), 0)
+end
+
+test_dispatches_cmux_terminal_target_to_cmux_transport()
+
+local function test_picks_between_multiple_targets_before_submitting()
+  local root_path = "/work/picker"
+  local original_capture = herdr.capture
+  local original_targets_discover = targets.discover
+  local original_herdr_discover = discovery.for_repo
+  local original_select = vim.ui.select
+  local original_send = submit.send
+  local picker_opened, selected_target
+
+  queue.clear(root_path)
+  queue.add({
+    repo_root = root_path,
+    path = "lua/example.lua",
+    start_line = 1,
+    text = "run()",
+  }, "Review this.")
+  herdr.capture = function()
+    return { repo_root = root_path }
+  end
+  targets.discover = function(_, callback)
+    callback({
+      {
+        backend = "cmux",
+        id = "surface-claude",
+        agent = "Claude Code",
+        status = "idle",
+        workspace = "Review workspace",
+      },
+      {
+        backend = "cmux_terminal",
+        id = "surface-cursor",
+        agent = "Cursor Agent",
+        status = "paste + submit",
+        workspace = "Review workspace",
+      },
+    }, nil)
+  end
+  discovery.for_repo = function(_, callback)
+    callback({}, nil)
+  end
+  vim.ui.select = function(items, options, callback)
+    picker_opened = options.format_item(items[1])
+    callback(items[2], 2)
+  end
+  submit.send = function(_, target, callback)
+    selected_target = target
+    callback(true, nil)
+  end
+
+  herdr.submit_queue()
+
+  herdr.capture = original_capture
+  targets.discover = original_targets_discover
+  discovery.for_repo = original_herdr_discover
+  vim.ui.select = original_select
+  submit.send = original_send
+  assert_equal(picker_opened, "[cmux] Claude Code [idle] Review workspace")
+  assert_equal(selected_target.id, "surface-cursor")
+end
+
+test_picks_between_multiple_targets_before_submitting()
+
+local function test_skips_picker_for_single_target()
+  local root_path = "/work/single-target"
+  local original_capture = herdr.capture
+  local original_targets_discover = targets.discover
+  local original_select = vim.ui.select
+  local original_send = submit.send
+  local picker_opened, selected_target
+
+  queue.clear(root_path)
+  queue.add({
+    repo_root = root_path,
+    path = "lua/example.lua",
+    start_line = 1,
+    text = "run()",
+  }, "Review this.")
+  herdr.capture = function()
+    return { repo_root = root_path }
+  end
+  targets.discover = function(_, callback)
+    callback({
+      {
+        backend = "cmux_terminal",
+        id = "surface-cursor",
+        agent = "Cursor Agent",
+        status = "paste + submit",
+        workspace = "Review workspace",
+      },
+    }, nil)
+  end
+  vim.ui.select = function()
+    picker_opened = true
+  end
+  submit.send = function(_, target, callback)
+    selected_target = target
+    callback(true, nil)
+  end
+
+  herdr.submit_queue()
+
+  herdr.capture = original_capture
+  targets.discover = original_targets_discover
+  vim.ui.select = original_select
+  submit.send = original_send
+  assert_equal(picker_opened, nil)
+  assert_equal(selected_target.id, "surface-cursor")
+end
+
+test_skips_picker_for_single_target()
+
+local function test_does_not_request_manual_submit_for_cmux_terminal()
+  local source = table.concat(vim.fn.readfile(root .. "/dev/herdr.nvim/lua/herdr/init.lua"), "\n")
+  assert(not source:find("submit it manually", 1, true))
+end
+
+test_does_not_request_manual_submit_for_cmux_terminal()
 
 local function test_builds_one_prompt_from_queued_comments()
   local prompt = client.queue_prompt(queue.items("/work/app"))
@@ -707,12 +2051,17 @@ local function test_reserves_f8_for_herdr_not_claudeide()
   assert(not claudeide_spec:find('"<F8>"', 1, true), "Claude IDE must not own F8")
   assert(not claudeide_spec:find('"<S-F8>"', 1, true), "Claude IDE must not own Shift+F8")
   assert(herdr_spec:find('"<F8>"', 1, true), "Herdr must own F8")
+  assert(not herdr_spec:find('":<C-u>ReviewCommentVisual<cr>"', 1, true), "Visual F8 must not open command line")
+  assert(herdr_spec:find('"<cmd>ReviewCommentVisual<cr>"', 1, true), "Visual F8 must use <cmd>")
 end
 
 test_reserves_f8_for_herdr_not_claudeide()
 
 local function test_exposes_a_submit_queue_command()
   local herdr_spec = table.concat(vim.fn.readfile(root .. "/lua/plugins/herdr.lua"), "\n")
+  local herdr_init = table.concat(vim.fn.readfile(root .. "/dev/herdr.nvim/lua/herdr/init.lua"), "\n")
+  assert(herdr_spec:find('"ReviewSubmitQueue"', 1, true), "ReviewSubmitQueue must be lazy-loaded")
+  assert(herdr_init:find('"ReviewSubmitQueue"', 1, true), "ReviewSubmitQueue must submit the unified queue")
   assert(herdr_spec:find('"HerdrSubmitQueue"', 1, true), "Herdr must expose queue submission")
 end
 
