@@ -10,9 +10,17 @@ function M.detect()
   return vim.env.HC_TERMINAL_ID ~= nil and vim.env.HC_TERMINAL_ID ~= ""
 end
 
-M.discover = app.discover
-M.revalidate = app.revalidate
-M.send_queue = app.send_queue
+function M.discover(repo_root, callback)
+  app.discover(repo_root, callback)
+end
+
+function M.revalidate(repo_root, target, callback)
+  app.revalidate(repo_root, target, callback)
+end
+
+function M.send_queue(target, items, callback)
+  app.send_queue(target, items, callback)
+end
 
 ---@param target table
 ---@return string

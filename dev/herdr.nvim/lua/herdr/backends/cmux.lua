@@ -10,9 +10,17 @@ function M.detect()
   return vim.env.CMUX_SURFACE_ID ~= nil and vim.env.CMUX_SURFACE_ID ~= ""
 end
 
-M.discover = cmux.discover
-M.revalidate = cmux.revalidate
-M.send_queue = cmux.send_queue
+function M.discover(_, callback)
+  cmux.discover(callback)
+end
+
+function M.revalidate(_, target, callback)
+  cmux.revalidate(target, callback)
+end
+
+function M.send_queue(target, items, callback)
+  cmux.send_queue(target, items, callback)
+end
 
 ---@param target table
 ---@return string

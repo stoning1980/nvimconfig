@@ -1,29 +1,9 @@
-local app = require("herdr.app")
-local client = require("herdr.client")
-local cmux = require("herdr.cmux")
+local backends = require("herdr.backends")
 local queue = require("herdr.queue")
 local targets = require("herdr.targets")
 
 local M = {}
 local active = {}
-
----@param target table
----@return table|nil
-local function transport_for(target)
-  if target.backend == "cmux" or target.backend == "cmux_terminal" then
-    return cmux
-  end
-  if target.backend == "herdr" then
-    return {
-      send_queue = function(_, items, callback)
-        client.send_queue(target.source, items, callback)
-      end,
-    }
-  end
-  if target.backend == "herdr_app" then
-    return app
-  end
-end
 
 ---@param repo_root string
 ---@param target table
@@ -50,11 +30,7 @@ function M.send(repo_root, target, callback, transport)
   end
 
   local function dispatch(current_target, selected_transport)
-    selected_transport = selected_transport or transport_for(current_target)
-    if not selected_transport then
-      finish(false, "unknown review target backend: " .. tostring(current_target.backend))
-      return
-    end
+    selected_transport = selected_transport or backends
     selected_transport.send_queue(current_target, items, function(ok, err)
       finish(ok, err)
     end)

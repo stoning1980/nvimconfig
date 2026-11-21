@@ -2,6 +2,9 @@ local root = vim.fn.getcwd()
 package.path = root .. "/dev/herdr.nvim/lua/?.lua;" .. root .. "/dev/herdr.nvim/lua/?/init.lua;" .. package.path
 
 local backends = require("herdr.backends")
+local queue = require("herdr.queue")
+local submit = require("herdr.submit")
+local targets = require("herdr.targets")
 
 local function assert_equal(actual, expected, message)
   if actual ~= expected then
@@ -69,15 +72,21 @@ test_builtin_adapters_implement_unique_contract()
 
 local function test_detects_hosts_in_existing_precedence_order()
   with_adapter_stubs({
-    herdr = { detect = function()
-      return true
-    end },
-    herdr_app = { detect = function()
-      return true
-    end },
-    cmux = { detect = function()
-      return true
-    end },
+    herdr = {
+      detect = function()
+        return true
+      end,
+    },
+    herdr_app = {
+      detect = function()
+        return true
+      end,
+    },
+    cmux = {
+      detect = function()
+        return true
+      end,
+    },
   }, function()
     assert_equal(backends.active().id, "herdr")
   end)
@@ -87,15 +96,21 @@ test_detects_hosts_in_existing_precedence_order()
 
 local function test_discover_reports_no_supported_host()
   with_adapter_stubs({
-    herdr = { detect = function()
-      return false
-    end },
-    herdr_app = { detect = function()
-      return false
-    end },
-    cmux = { detect = function()
-      return false
-    end },
+    herdr = {
+      detect = function()
+        return false
+      end,
+    },
+    herdr_app = {
+      detect = function()
+        return false
+      end,
+    },
+    cmux = {
+      detect = function()
+        return false
+      end,
+    },
   }, function()
     local result, discovery_error
     backends.discover("/work/app", function(targets, err)
@@ -119,12 +134,16 @@ local function test_revalidate_rejects_target_owned_by_another_host()
         delegated = true
       end,
     },
-    herdr_app = { detect = function()
-      return true
-    end },
-    cmux = { detect = function()
-      return false
-    end },
+    herdr_app = {
+      detect = function()
+        return true
+      end,
+    },
+    cmux = {
+      detect = function()
+        return false
+      end,
+    },
   }, function()
     local current, revalidation_error
     backends.revalidate("/work/app", { backend = "herdr" }, function(target, err)
@@ -182,5 +201,79 @@ local function test_unknown_target_backend_fails_closed()
 end
 
 test_unknown_target_backend_fails_closed()
+
+local function test_targets_facade_delegates_to_backend_registry()
+  local original_discover = backends.discover
+  local original_revalidate = backends.revalidate
+  local original_label = backends.label
+  local calls = {}
+  backends.discover = function(repo_root, callback)
+    calls.discover = repo_root
+    callback({ { backend = "test" } }, nil)
+  end
+  backends.revalidate = function(repo_root, target, callback)
+    calls.revalidate = { repo_root = repo_root, target = target }
+    callback(target, nil)
+  end
+  backends.label = function(target)
+    calls.label = target
+    return "[test]"
+  end
+
+  local discovered
+  targets.discover("/work/app", function(result)
+    discovered = result
+  end)
+  local revalidated
+  targets.revalidate("/work/app", discovered[1], function(result)
+    revalidated = result
+  end)
+  local label = targets.label(revalidated)
+
+  backends.discover = original_discover
+  backends.revalidate = original_revalidate
+  backends.label = original_label
+  assert_equal(calls.discover, "/work/app")
+  assert_equal(calls.revalidate.repo_root, "/work/app")
+  assert_equal(calls.label.backend, "test")
+  assert_equal(label, "[test]")
+end
+
+test_targets_facade_delegates_to_backend_registry()
+
+local function test_submit_dispatches_through_backend_registry()
+  local root_path = "/work/registry-submit"
+  local original_send = backends.send_queue
+  local original_revalidate = targets.revalidate
+  local dispatched
+  queue.clear(root_path)
+  queue.add({
+    repo_root = root_path,
+    path = "lua/example.lua",
+    start_line = 1,
+    text = "run()",
+  }, "Review this.")
+  targets.revalidate = function(_, target, callback)
+    callback(target, nil)
+  end
+  backends.send_queue = function(target, _, callback)
+    dispatched = target
+    callback(true, nil)
+  end
+
+  local result
+  submit.send(root_path, { backend = "test" }, function(ok, err)
+    result = { ok = ok, err = err }
+  end)
+
+  backends.send_queue = original_send
+  targets.revalidate = original_revalidate
+  assert_equal(result.ok, true)
+  assert_equal(result.err, nil)
+  assert_equal(dispatched.backend, "test")
+  assert_equal(queue.count(root_path), 0)
+end
+
+test_submit_dispatches_through_backend_registry()
 
 print("herdr_backends_spec: all tests passed")
