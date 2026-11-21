@@ -1,0 +1,186 @@
+local root = vim.fn.getcwd()
+package.path = root .. "/dev/herdr.nvim/lua/?.lua;" .. root .. "/dev/herdr.nvim/lua/?/init.lua;" .. package.path
+
+local backends = require("herdr.backends")
+
+local function assert_equal(actual, expected, message)
+  if actual ~= expected then
+    error((message or "values differ") .. ": expected " .. vim.inspect(expected) .. ", got " .. vim.inspect(actual))
+  end
+end
+
+local function adapters_by_id()
+  local result = {}
+  for _, adapter in ipairs(backends.list()) do
+    result[adapter.id] = adapter
+  end
+  return result
+end
+
+local function with_adapter_stubs(stubs, callback)
+  local originals = {}
+  local adapters = adapters_by_id()
+  for id, methods in pairs(stubs) do
+    originals[id] = {}
+    for name, replacement in pairs(methods) do
+      originals[id][name] = adapters[id][name]
+      adapters[id][name] = replacement
+    end
+  end
+  local ok, err = pcall(callback, adapters)
+  for id, methods in pairs(originals) do
+    for name, original in pairs(methods) do
+      adapters[id][name] = original
+    end
+  end
+  if not ok then
+    error(err)
+  end
+end
+
+local function test_builtin_adapters_implement_unique_contract()
+  local required = {
+    "id",
+    "target_ids",
+    "detect",
+    "discover",
+    "revalidate",
+    "send_queue",
+    "label",
+    "host_error",
+  }
+  local seen_targets = {}
+  for _, adapter in ipairs(backends.list()) do
+    for _, field in ipairs(required) do
+      assert(adapter[field] ~= nil, adapter.id .. " is missing " .. field)
+    end
+    for _, target_id in ipairs(adapter.target_ids) do
+      assert(not seen_targets[target_id], "duplicate target backend: " .. target_id)
+      seen_targets[target_id] = adapter.id
+    end
+  end
+  assert_equal(seen_targets.herdr, "herdr")
+  assert_equal(seen_targets.herdr_app, "herdr_app")
+  assert_equal(seen_targets.cmux, "cmux")
+  assert_equal(seen_targets.cmux_terminal, "cmux")
+end
+
+test_builtin_adapters_implement_unique_contract()
+
+local function test_detects_hosts_in_existing_precedence_order()
+  with_adapter_stubs({
+    herdr = { detect = function()
+      return true
+    end },
+    herdr_app = { detect = function()
+      return true
+    end },
+    cmux = { detect = function()
+      return true
+    end },
+  }, function()
+    assert_equal(backends.active().id, "herdr")
+  end)
+end
+
+test_detects_hosts_in_existing_precedence_order()
+
+local function test_discover_reports_no_supported_host()
+  with_adapter_stubs({
+    herdr = { detect = function()
+      return false
+    end },
+    herdr_app = { detect = function()
+      return false
+    end },
+    cmux = { detect = function()
+      return false
+    end },
+  }, function()
+    local result, discovery_error
+    backends.discover("/work/app", function(targets, err)
+      result, discovery_error = targets, err
+    end)
+    assert_equal(result, nil)
+    assert_equal(discovery_error, "Neovim is not running inside Herdr, Herdr app, or cmux")
+  end)
+end
+
+test_discover_reports_no_supported_host()
+
+local function test_revalidate_rejects_target_owned_by_another_host()
+  local delegated
+  with_adapter_stubs({
+    herdr = {
+      detect = function()
+        return false
+      end,
+      revalidate = function()
+        delegated = true
+      end,
+    },
+    herdr_app = { detect = function()
+      return true
+    end },
+    cmux = { detect = function()
+      return false
+    end },
+  }, function()
+    local current, revalidation_error
+    backends.revalidate("/work/app", { backend = "herdr" }, function(target, err)
+      current, revalidation_error = target, err
+    end)
+    assert_equal(delegated, nil)
+    assert_equal(current, nil)
+    assert_equal(revalidation_error, "Neovim is no longer running inside Herdr")
+  end)
+end
+
+test_revalidate_rejects_target_owned_by_another_host()
+
+local function test_dispatches_every_target_kind_to_its_owner()
+  local cases = {
+    { backend = "herdr", owner = "herdr" },
+    { backend = "herdr_app", owner = "herdr_app" },
+    { backend = "cmux", owner = "cmux" },
+    { backend = "cmux_terminal", owner = "cmux" },
+  }
+  local stubs = {}
+  for _, id in ipairs({ "herdr", "herdr_app", "cmux" }) do
+    stubs[id] = {
+      label = function(target)
+        return id .. ":" .. target.backend
+      end,
+      send_queue = function(target, _, callback)
+        callback(true, id .. ":" .. target.backend)
+      end,
+    }
+  end
+  with_adapter_stubs(stubs, function()
+    for _, case in ipairs(cases) do
+      local target = { backend = case.backend }
+      assert_equal(backends.label(target), case.owner .. ":" .. case.backend)
+      local ok_result, owner_result
+      backends.send_queue(target, {}, function(ok, owner)
+        ok_result, owner_result = ok, owner
+      end)
+      assert_equal(ok_result, true)
+      assert_equal(owner_result, case.owner .. ":" .. case.backend)
+    end
+  end)
+end
+
+test_dispatches_every_target_kind_to_its_owner()
+
+local function test_unknown_target_backend_fails_closed()
+  local ok_result, error_result
+  backends.send_queue({ backend = "unknown" }, {}, function(ok, err)
+    ok_result, error_result = ok, err
+  end)
+  assert_equal(ok_result, false)
+  assert_equal(error_result, "unknown review target backend: unknown")
+end
+
+test_unknown_target_backend_fails_closed()
+
+print("herdr_backends_spec: all tests passed")
