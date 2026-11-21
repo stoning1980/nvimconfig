@@ -60,8 +60,8 @@ workspace use `cmux agent message`. When no registered receiver exists,
 sibling terminal surfaces with an unambiguous foreground Cursor, Claude Code,
 Codex, or Kiro process appear as `[cmux terminal]` targets; plain shells and
 background agents are excluded. Choosing one uses `cmux paste --submit`. This
-fallback supports
-Cursor without pretending cmux can safely wake or message its interactive TUI.
+fallback supports Cursor without pretending cmux can safely wake or message its
+interactive TUI.
 The initial paste fails when the target already has a draft or open dialog.
 Large prompts are split into small sequential requests to avoid cmux 0.65.2
 closing requests over 4 KiB; continuation chunks use `--force` only after the
@@ -97,17 +97,20 @@ left null side is represented as an empty file in the patch.
 - `context.lua` normalizes exact editor selections into stable review context.
 - `diffview.lua` validates the current right pane and captures relevant before/current patch hunks.
 - `queue.lua` stores session-only review comments by Git repository.
+- `backends/` contains the ordered host registry and one adapter per supported
+  client. See [`docs/backends.md`](docs/backends.md) before adding a client.
 - `discovery.lua` reads Herdr's JSON snapshot and filters agents by repository.
 - `app.lua` discovers same-space Herdr app agents through herdr-core and sends
   guarded prompts with `hc`.
 - `cmux.lua` discovers active sessions in the caller's workspace and sends
   hook-backed cmux messages.
-- `targets.lua` detects the current host and labels that host's picker entries.
+- `targets.lua` is the registry facade for discovery, validation, and labels.
 - `client.lua` formats prompts and delivers directly to Herdr.
-- `submit.lua` dispatches through the selected backend and clears only
+- `submit.lua` dispatches through the registry and clears only
   successfully delivered queues.
 - `input.lua` provides the local comment UI.
 
-CLI transports are isolated in `client.lua`, `discovery.lua`, and `cmux.lua`,
-so either backend can evolve without changing editor interaction or payload
-construction.
+The registry rejects a selected target when Neovim's active host no longer owns
+it. Each adapter then revalidates workspace/space, repository, session, and
+process identity before transport. Adding a client does not change editor
+interaction, queue semantics, or payload construction.

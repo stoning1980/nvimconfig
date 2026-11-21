@@ -50,10 +50,11 @@ use their herdr-core space label as the workspace boundary.
 
 Key subsystems:
 - `repo.lua` + `context.lua` + `queue.lua` — Git-root metadata, selected-text anchors, and session-only queues
+- `backends/` — Ordered host registry and built-in adapters; see `dev/herdr.nvim/docs/backends.md` before adding a client
 - `discovery.lua` — Herdr CLI snapshot discovery and repository matching
 - `app.lua` — Herdr app space discovery and `hc send` delivery
-- `cmux.lua` + `targets.lua` — Host detection, same-workspace cmux discovery, agent-process validation, and terminal paste/submit fallback
-- `submit.lua` — Backend dispatch and clear-on-success queue handling
+- `cmux.lua` — Same-workspace cmux discovery, agent-process validation, and terminal paste/submit fallback
+- `targets.lua` + `submit.lua` — Registry facades, queue dispatch, and clear-on-success handling
 - `client.lua` — Direct `herdr agent prompt` delivery
 - `input.lua` — Snacks comment float with a `vim.ui.input` fallback
 

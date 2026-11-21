@@ -18,6 +18,7 @@ This is a Neovim configuration built on LazyVim. It includes custom plugins in d
 - Both custom plugins depend on no external Lua libraries (pure Lua + Neovim APIs)
 - codechat.nvim depends on folke/snacks.nvim for terminals and floating windows
 - herdr.nvim depends on folke/snacks.nvim for its comment float, detects whether Neovim is hosted by Herdr, Herdr app, or cmux, discovers targets only in that host's current workspace/space, sends Herdr app prompts with `hc`, and pastes/submits only to sibling cmux terminals with an unambiguous foreground agent process when no hook-backed receiver exists
+- New herdr.nvim clients implement the internal adapter contract in `dev/herdr.nvim/lua/herdr/backends/` and follow `dev/herdr.nvim/docs/backends.md`; do not add client switches to `targets.lua` or `submit.lua`
 - claudeide.nvim implements WebSocket + MCP protocol from scratch using vim.uv TCP
 
 ## Architecture: claudeide.nvim
