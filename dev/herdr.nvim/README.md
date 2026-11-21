@@ -3,16 +3,22 @@
 `herdr.nvim` captures Git-anchored review comments in Neovim and sends each
 queued batch to a session selected at submit time. When Neovim runs inside
 Herdr, only agents in that Herdr workspace are shown. When it runs inside cmux,
-only supported agents in that cmux workspace are shown. It is deliberately
+only supported agents in that cmux workspace are shown. When it runs inside
+Herdr app, only agents in the same app space are shown. It is deliberately
 separate from `claudeide.nvim` and `codechat.nvim`: it does not host an MCP
 server or own an agent terminal.
 
 ## Requirements
 
 - Neovim 0.10 or newer
-- Neovim running inside Herdr or cmux:
+- Neovim running inside Herdr, Herdr app, or cmux:
   - Herdr requires `herdr` on `$PATH` and an agent in the same workspace whose
     `cwd` or `foreground_cwd` is inside the current Git repository.
+  - Herdr app requires `hc` on `$PATH`; Neovim and the target agent must be
+    terminals in the same app space, and the agent's foreground `cwd` must be
+    inside the current Git repository. Agents with lifecycle reporting are
+    supported directly; an unreported foreground Cursor, Claude Code, Codex,
+    or Kiro process is supported through guarded paste and submit.
   - cmux can use an active, hook-registered Claude Code, Codex, or Kiro session,
     or paste and submit the prompt in another terminal in the same workspace.
 - `folke/snacks.nvim` for the multi-line comment float; Neovim's `vim.ui.input`
@@ -44,12 +50,17 @@ per repository runs at a time.
 
 `HERDR_ENV=1` selects Herdr exclusively; agents are discovered with
 `herdr api snapshot` and matched to both the current Herdr workspace and Git
-repository. Otherwise, `CMUX_SURFACE_ID` selects cmux exclusively. Active
-Claude Code, Codex, and Kiro receivers in the caller's workspace use
-`cmux agent message`. When no registered receiver exists, sibling terminal
-surfaces with an unambiguous foreground Cursor, Claude Code, Codex, or Kiro
-process appear as `[cmux terminal]` targets; plain shells and background agents
-are excluded. Choosing one uses `cmux paste --submit`. This fallback supports
+repository. `HC_TERMINAL_ID` selects Herdr app next: the current terminal's
+`herdr.space` label scopes discovery, `hc get` verifies each agent's foreground
+repository and process identity, and `hc send` delivers the prompt. Unreported
+agents are accepted only when their foreground process is unambiguously Cursor,
+Claude Code, Codex, or Kiro. Otherwise, `CMUX_SURFACE_ID` selects cmux
+exclusively. Active Claude Code, Codex, and Kiro receivers in the caller's
+workspace use `cmux agent message`. When no registered receiver exists,
+sibling terminal surfaces with an unambiguous foreground Cursor, Claude Code,
+Codex, or Kiro process appear as `[cmux terminal]` targets; plain shells and
+background agents are excluded. Choosing one uses `cmux paste --submit`. This
+fallback supports
 Cursor without pretending cmux can safely wake or message its interactive TUI.
 The initial paste fails when the target already has a draft or open dialog.
 Large prompts are split into small sequential requests to avoid cmux 0.65.2
@@ -65,7 +76,7 @@ A combined prompt includes every queued item's Git-root-relative path,
 selected line range, branch, HEAD revision, exact selected code, and typed
 comment. Herdr receives it through `herdr agent prompt`; cmux either uses the
 selected agent's hook-backed message channel or pastes and submits it in the
-selected terminal.
+selected terminal. Herdr app receives it through `hc send`.
 
 In a two-way Diffview, F8 works only from the right pane when that pane is the
 checked-out HEAD commit or working-tree file. A working-tree pane must still
@@ -87,6 +98,8 @@ left null side is represented as an empty file in the patch.
 - `diffview.lua` validates the current right pane and captures relevant before/current patch hunks.
 - `queue.lua` stores session-only review comments by Git repository.
 - `discovery.lua` reads Herdr's JSON snapshot and filters agents by repository.
+- `app.lua` discovers same-space Herdr app agents through herdr-core and sends
+  guarded prompts with `hc`.
 - `cmux.lua` discovers active sessions in the caller's workspace and sends
   hook-backed cmux messages.
 - `targets.lua` detects the current host and labels that host's picker entries.

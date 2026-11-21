@@ -151,7 +151,7 @@ local function submit_queue(repo_root)
       return
     end
     if #available == 0 then
-      notify("no review session is available for this repository or cmux workspace", vim.log.levels.WARN)
+      notify("no review session is available for this repository and current host workspace", vim.log.levels.WARN)
       return
     end
 

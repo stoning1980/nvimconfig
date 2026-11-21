@@ -2,6 +2,7 @@ local root = vim.fn.getcwd()
 package.path = root .. "/dev/herdr.nvim/lua/?.lua;" .. root .. "/dev/herdr.nvim/lua/?/init.lua;" .. package.path
 
 local context = require("herdr.context")
+local app = require("herdr.app")
 local cmux = require("herdr.cmux")
 local config = require("herdr.config")
 local discovery = require("herdr.discovery")
@@ -603,6 +604,175 @@ end
 
 test_uses_snapshot_command_without_json_flag()
 
+local function test_matches_herdr_app_agents_in_same_space_and_repository()
+  local matched = app.targets({
+    {
+      address = "t1",
+      agent = "cursor",
+      created_ms = 10,
+      foreground = { cwd = "/work/app", name = "cursor-agent", pid = 101 },
+      labels = { ["herdr.space"] = "space-1" },
+      state = "live",
+      status = "idle",
+    },
+    {
+      address = "t2",
+      agent = "nvim",
+      created_ms = 20,
+      foreground = { cwd = "/work/app", name = "nvim", pid = 202 },
+      labels = { ["herdr.space"] = "space-1" },
+      state = "live",
+    },
+    {
+      address = "t3",
+      agent = "codex",
+      foreground = { cwd = "/work/app/subdir", name = "codex", pid = 303 },
+      labels = { ["herdr.space"] = "space-2" },
+      state = "live",
+      status = "working",
+    },
+    {
+      address = "t4",
+      agent = "claude",
+      foreground = { cwd = "/work/other", name = "claude", pid = 404 },
+      labels = { ["herdr.space"] = "space-1" },
+      state = "live",
+      status = "idle",
+    },
+  }, "t2", "space-1", "/work/app")
+
+  assert_equal(#matched, 1)
+  assert_equal(matched[1].backend, "herdr_app")
+  assert_equal(matched[1].id, "t1")
+  assert_equal(matched[1].agent, "cursor")
+  assert_equal(matched[1].space_id, "space-1")
+  assert_equal(matched[1].terminal_created_ms, 10)
+  assert_equal(matched[1].foreground_pid, 101)
+end
+
+test_matches_herdr_app_agents_in_same_space_and_repository()
+
+local function test_matches_unreported_cursor_in_herdr_app_space()
+  local matched = app.targets({
+    {
+      address = "t1",
+      agent = "bash",
+      created_ms = 10,
+      foreground = {
+        argv = {
+          "/Users/test/.local/bin/agent",
+          "--disable-sigusr1",
+          "/Users/test/.local/share/cursor-agent/versions/current/index.js",
+        },
+        cwd = "/work/app",
+        name = "node",
+        pid = 101,
+      },
+      labels = { ["herdr.space"] = "space-1" },
+      reported = false,
+      state = "live",
+    },
+  }, "t2", "space-1", "/work/app")
+
+  assert_equal(#matched, 1)
+  assert_equal(matched[1].agent, "Cursor Agent")
+  assert_equal(matched[1].status, "paste + submit")
+end
+
+test_matches_unreported_cursor_in_herdr_app_space()
+
+local function test_excludes_unreported_shell_with_json_null_status()
+  local terminal = vim.json.decode(vim.json.encode({
+    address = "t5",
+    agent = "bash",
+    foreground = { argv = { "/bin/bash", "-l" }, cwd = "/work/app", name = "bash", pid = 505 },
+    labels = { ["herdr.space"] = "space-1" },
+    state = "live",
+    status = vim.NIL,
+  }))
+
+  assert_equal(#app.targets({ terminal }, "t2", "space-1", "/work/app"), 0)
+end
+
+test_excludes_unreported_shell_with_json_null_status()
+
+local function test_discovers_herdr_app_agents_from_current_space()
+  local original_system = vim.system
+  local original_terminal = vim.env.HC_TERMINAL_ID
+  local commands = {}
+  vim.env.HC_TERMINAL_ID = "t2"
+  vim.system = function(command, _, callback)
+    commands[#commands + 1] = table.concat(command, " ")
+    if command[2] == "get" and command[3] == "t2" then
+      callback({
+        code = 0,
+        stdout = vim.json.encode({
+          address = "t2",
+          created_ms = 20,
+          labels = { ["herdr.space"] = "space-1" },
+          state = "live",
+        }),
+        stderr = "",
+      })
+    elseif command[2] == "ls" then
+      callback({
+        code = 0,
+        stdout = vim.json.encode({
+          terminals = {
+            { address = "t1", agent = "bash" },
+            { address = "t2", agent = "bash" },
+          },
+        }),
+        stderr = "",
+      })
+    else
+      callback({
+        code = 0,
+        stdout = vim.json.encode({
+          address = "t1",
+          created_ms = 10,
+          foreground = {
+            argv = {
+              "/Users/test/.local/bin/agent",
+              "/Users/test/.local/share/cursor-agent/versions/current/index.js",
+            },
+            cwd = "/work/app",
+            name = "node",
+            pid = 101,
+          },
+          labels = { ["herdr.space"] = "space-1" },
+          reported = false,
+          state = "live",
+        }),
+        stderr = "",
+      })
+    end
+  end
+
+  local discovered, discovery_error
+  app.discover("/work/app", function(result, err)
+    discovered, discovery_error = result, err
+  end)
+  vim.wait(100, function()
+    return discovered ~= nil or discovery_error ~= nil
+  end)
+
+  vim.system = original_system
+  vim.env.HC_TERMINAL_ID = original_terminal
+  assert_equal(discovery_error, nil)
+  assert_equal(#discovered, 1)
+  assert_equal(discovered[1].id, "t1")
+  assert_equal(discovered[1].agent, "Cursor Agent")
+  assert_equal(discovered[1].status, "paste + submit")
+  assert_equal(discovered[1].caller_id, "t2")
+  assert_equal(discovered[1].caller_created_ms, 20)
+  assert_equal(commands[1], "hc get t2 --json")
+  assert_equal(commands[2], "hc ls --json --label herdr.space=space-1")
+  assert_equal(commands[3], "hc get t1 --json")
+end
+
+test_discovers_herdr_app_agents_from_current_space()
+
 local function test_labels_herdr_and_cmux_picker_targets()
   local herdr_targets = targets.herdr({
     { agent = "cursor", agent_status = "working", agent_id = "agent-1" },
@@ -621,6 +791,10 @@ local function test_labels_herdr_and_cmux_picker_targets()
   }, "Review workspace")
 
   assert_equal(targets.label(herdr_targets[1]), "[Herdr] cursor [working] agent-1")
+  assert_equal(
+    targets.label({ backend = "herdr_app", agent = "Cursor", status = "idle", id = "t7" }),
+    "[Herdr app] Cursor [idle] t7"
+  )
   assert_equal(targets.label(cmux_targets[1]), "[cmux] Claude Code [idle] Review workspace")
   assert_equal(
     targets.label({
@@ -680,13 +854,60 @@ end
 
 test_uses_only_herdr_inside_herdr()
 
+local function test_uses_only_herdr_app_inside_herdr_app()
+  local original_app = app.discover
+  local original_cmux = cmux.discover
+  local original_herdr_env = vim.env.HERDR_ENV
+  local original_hc_terminal = vim.env.HC_TERMINAL_ID
+  local original_cmux_surface = vim.env.CMUX_SURFACE_ID
+  local app_called, cmux_called
+  vim.env.HERDR_ENV = nil
+  vim.env.HC_TERMINAL_ID = "t2"
+  vim.env.CMUX_SURFACE_ID = "surface-cmux"
+  app.discover = function(repo_root, callback)
+    app_called = repo_root
+    callback({
+      {
+        backend = "herdr_app",
+        id = "t1",
+        agent = "Cursor",
+        status = "idle",
+        space_id = "space-1",
+      },
+    }, nil)
+  end
+  cmux.discover = function()
+    cmux_called = true
+  end
+
+  local discovered, discovery_error
+  targets.discover("/work/app", function(result, err)
+    discovered, discovery_error = result, err
+  end)
+
+  app.discover = original_app
+  cmux.discover = original_cmux
+  vim.env.HERDR_ENV = original_herdr_env
+  vim.env.HC_TERMINAL_ID = original_hc_terminal
+  vim.env.CMUX_SURFACE_ID = original_cmux_surface
+  assert_equal(discovery_error, nil)
+  assert_equal(app_called, "/work/app")
+  assert_equal(cmux_called, nil)
+  assert_equal(#discovered, 1)
+  assert_equal(discovered[1].backend, "herdr_app")
+end
+
+test_uses_only_herdr_app_inside_herdr_app()
+
 local function test_uses_only_cmux_inside_cmux()
   local original_herdr = discovery.for_repo
   local original_cmux = cmux.discover
   local original_herdr_env = vim.env.HERDR_ENV
+  local original_hc_terminal = vim.env.HC_TERMINAL_ID
   local original_cmux_surface = vim.env.CMUX_SURFACE_ID
   local herdr_called, cmux_called
   vim.env.HERDR_ENV = nil
+  vim.env.HC_TERMINAL_ID = nil
   vim.env.CMUX_SURFACE_ID = "surface-cmux"
   discovery.for_repo = function(_, callback)
     herdr_called = true
@@ -713,6 +934,7 @@ local function test_uses_only_cmux_inside_cmux()
   discovery.for_repo = original_herdr
   cmux.discover = original_cmux
   vim.env.HERDR_ENV = original_herdr_env
+  vim.env.HC_TERMINAL_ID = original_hc_terminal
   vim.env.CMUX_SURFACE_ID = original_cmux_surface
   assert_equal(discovery_error, nil)
   assert_equal(herdr_called, nil)
@@ -1236,6 +1458,111 @@ end
 
 test_rejects_herdr_target_that_left_repo_or_workspace()
 
+local function test_rejects_replaced_agent_in_same_herdr_app_terminal()
+  local original_discover = app.discover
+  local original_terminal = vim.env.HC_TERMINAL_ID
+  vim.env.HC_TERMINAL_ID = "t2"
+  app.discover = function(repo_root, callback)
+    assert_equal(repo_root, "/work/app")
+    callback({
+      {
+        backend = "herdr_app",
+        id = "t1",
+        agent = "cursor",
+        space_id = "space-1",
+        terminal_created_ms = 10,
+        foreground_pid = 999,
+        caller_id = "t2",
+        caller_created_ms = 20,
+      },
+    }, nil)
+  end
+
+  local current_target, revalidation_error
+  app.revalidate("/work/app", {
+    backend = "herdr_app",
+    id = "t1",
+    agent = "cursor",
+    space_id = "space-1",
+    terminal_created_ms = 10,
+    foreground_pid = 101,
+    caller_id = "t2",
+    caller_created_ms = 20,
+  }, function(target, err)
+    current_target, revalidation_error = target, err
+  end)
+
+  app.discover = original_discover
+  vim.env.HC_TERMINAL_ID = original_terminal
+  assert_equal(current_target, nil)
+  assert_equal(revalidation_error, "Herdr app target agent changed before delivery")
+end
+
+test_rejects_replaced_agent_in_same_herdr_app_terminal()
+
+local function test_revalidates_herdr_app_target_with_app_backend()
+  local original_revalidate = app.revalidate
+  local original_herdr_env = vim.env.HERDR_ENV
+  local original_terminal = vim.env.HC_TERMINAL_ID
+  local called
+  vim.env.HERDR_ENV = nil
+  vim.env.HC_TERMINAL_ID = "t2"
+  app.revalidate = function(repo_root, target, callback)
+    called = { repo_root = repo_root, target = target }
+    callback(target, nil)
+  end
+
+  local current_target, revalidation_error
+  targets.revalidate("/work/app", {
+    backend = "herdr_app",
+    id = "t1",
+    caller_id = "t2",
+  }, function(target, err)
+    current_target, revalidation_error = target, err
+  end)
+
+  app.revalidate = original_revalidate
+  vim.env.HERDR_ENV = original_herdr_env
+  vim.env.HC_TERMINAL_ID = original_terminal
+  assert_equal(revalidation_error, nil)
+  assert_equal(called.repo_root, "/work/app")
+  assert_equal(called.target.id, "t1")
+  assert_equal(current_target.id, "t1")
+end
+
+test_revalidates_herdr_app_target_with_app_backend()
+
+local function test_rejects_cmux_target_after_moving_to_herdr_app()
+  local original_revalidate = cmux.revalidate
+  local original_herdr_env = vim.env.HERDR_ENV
+  local original_terminal = vim.env.HC_TERMINAL_ID
+  local original_cmux_surface = vim.env.CMUX_SURFACE_ID
+  local cmux_called
+  vim.env.HERDR_ENV = nil
+  vim.env.HC_TERMINAL_ID = "t2"
+  vim.env.CMUX_SURFACE_ID = "surface-cmux"
+  cmux.revalidate = function()
+    cmux_called = true
+  end
+
+  local revalidation_error
+  targets.revalidate("/work/app", {
+    backend = "cmux",
+    id = "surface-agent",
+  }, function(_, err)
+    revalidation_error = err
+  end)
+
+  cmux.revalidate = original_revalidate
+  vim.env.HERDR_ENV = original_herdr_env
+  vim.env.HC_TERMINAL_ID = original_terminal
+  vim.env.CMUX_SURFACE_ID = original_cmux_surface
+  assert_equal(cmux_called, nil)
+  assert_equal(revalidation_error, "Neovim is no longer running exclusively inside cmux")
+end
+
+test_rejects_cmux_target_after_moving_to_herdr_app()
+
 local function test_revalidation_fails_when_host_identity_changes()
   local original_herdr_env = vim.env.HERDR_ENV
   local original_herdr_workspace = vim.env.HERDR_WORKSPACE_ID
@@ -1411,6 +1738,47 @@ local function test_keeps_each_before_and_current_patch_in_queue_prompt()
 end
 
 test_keeps_each_before_and_current_patch_in_queue_prompt()
+
+local function test_sends_herdr_app_queue_to_exact_core_terminal()
+  local original_system = vim.system
+  local command_seen, options_seen
+  vim.system = function(command, options, callback)
+    command_seen, options_seen = command, options
+    callback({ code = 0, stdout = vim.json.encode({ status = "sent" }), stderr = "" })
+  end
+
+  local ok_result, error_result
+  app.send_queue({ id = "t7" }, {
+    {
+      selection = {
+        path = "lua/example.lua",
+        start_line = 12,
+        end_line = 12,
+        text = "run()",
+        branch = "main",
+        revision = "abc123",
+      },
+      comment = "Please review this.",
+    },
+  }, function(ok, err)
+    ok_result, error_result = ok, err
+  end)
+  vim.wait(100, function()
+    return ok_result ~= nil
+  end)
+
+  vim.system = original_system
+  assert_equal(ok_result, true)
+  assert_equal(error_result, nil)
+  assert_equal(command_seen[1], "hc")
+  assert_equal(command_seen[2], "send")
+  assert_equal(command_seen[3], "--json")
+  assert_equal(command_seen[4], "t7")
+  assert(command_seen[5]:find("Please review this.", 1, true))
+  assert_equal(options_seen.text, true)
+end
+
+test_sends_herdr_app_queue_to_exact_core_terminal()
 
 local function test_sends_cmux_queue_to_exact_agent_surface()
   local original_system = vim.system
@@ -1808,6 +2176,41 @@ local function test_serializes_submissions_per_repository()
 end
 
 test_serializes_submissions_per_repository()
+
+local function test_dispatches_herdr_app_target_to_core_transport()
+  local root_path = "/work/herdr-app"
+  local original_send = app.send_queue
+  local original_revalidate = targets.revalidate
+  local dispatched
+  queue.clear(root_path)
+  queue.add({
+    repo_root = root_path,
+    path = "lua/example.lua",
+    start_line = 1,
+    text = "run()",
+  }, "Review this.")
+  app.send_queue = function(target, _, callback)
+    dispatched = target
+    callback(true, nil)
+  end
+  targets.revalidate = function(_, target, callback)
+    callback(target, nil)
+  end
+
+  local result
+  submit.send(root_path, { backend = "herdr_app", id = "t7" }, function(ok, err)
+    result = { ok = ok, err = err }
+  end)
+
+  app.send_queue = original_send
+  targets.revalidate = original_revalidate
+  assert_equal(result.ok, true)
+  assert_equal(result.err, nil)
+  assert_equal(dispatched.id, "t7")
+  assert_equal(queue.count(root_path), 0)
+end
+
+test_dispatches_herdr_app_target_to_core_transport()
 
 local function test_dispatches_cmux_terminal_target_to_cmux_transport()
   local root_path = "/work/cmux-terminal"

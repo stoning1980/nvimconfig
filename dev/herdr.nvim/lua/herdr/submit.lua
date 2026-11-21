@@ -1,3 +1,4 @@
+local app = require("herdr.app")
 local client = require("herdr.client")
 local cmux = require("herdr.cmux")
 local queue = require("herdr.queue")
@@ -18,6 +19,9 @@ local function transport_for(target)
         client.send_queue(target.source, items, callback)
       end,
     }
+  end
+  if target.backend == "herdr_app" then
+    return app
   end
 end
 

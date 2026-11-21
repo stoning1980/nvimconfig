@@ -1,3 +1,4 @@
+local app = require("herdr.app")
 local cmux = require("herdr.cmux")
 local discovery = require("herdr.discovery")
 
@@ -30,6 +31,9 @@ function M.label(target)
   if target.backend == "cmux_terminal" then
     return string.format("[cmux terminal] %s [paste + submit] %s", target.agent, target.workspace)
   end
+  if target.backend == "herdr_app" then
+    return string.format("[Herdr app] %s [%s] %s", target.agent, target.status, target.id)
+  end
   return string.format("[Herdr] %s [%s] %s", target.agent, target.status, target.id)
 end
 
@@ -47,12 +51,17 @@ function M.discover(repo_root, callback)
     return
   end
 
+  if vim.env.HC_TERMINAL_ID and vim.env.HC_TERMINAL_ID ~= "" then
+    app.discover(repo_root, callback)
+    return
+  end
+
   if vim.env.CMUX_SURFACE_ID and vim.env.CMUX_SURFACE_ID ~= "" then
     cmux.discover(callback)
     return
   end
 
-  callback(nil, "Neovim is not running inside Herdr or cmux")
+  callback(nil, "Neovim is not running inside Herdr, Herdr app, or cmux")
 end
 
 ---@param repo_root string
@@ -92,7 +101,21 @@ function M.revalidate(repo_root, target, callback)
     return
   end
 
-  if vim.env.HERDR_ENV == "1" or not vim.env.CMUX_SURFACE_ID or vim.env.CMUX_SURFACE_ID == "" then
+  if target.backend == "herdr_app" then
+    if vim.env.HERDR_ENV == "1" or not vim.env.HC_TERMINAL_ID or vim.env.HC_TERMINAL_ID == "" then
+      callback(nil, "Neovim is no longer running inside Herdr app")
+      return
+    end
+    app.revalidate(repo_root, target, callback)
+    return
+  end
+
+  if
+    vim.env.HERDR_ENV == "1"
+    or (vim.env.HC_TERMINAL_ID and vim.env.HC_TERMINAL_ID ~= "")
+    or not vim.env.CMUX_SURFACE_ID
+    or vim.env.CMUX_SURFACE_ID == ""
+  then
     callback(nil, "Neovim is no longer running exclusively inside cmux")
     return
   end

@@ -44,12 +44,14 @@ Key subsystems:
 ### Custom Plugin: herdr.nvim
 
 Queues typed review comments plus exact visual selection context for the current
-Git repository, detects whether Neovim is hosted by Herdr or cmux, then shows
-only matching agents from that host's current workspace.
+Git repository, detects whether Neovim is hosted by Herdr, Herdr app, or cmux, then shows
+only matching agents from that host's current workspace. Herdr app terminals
+use their herdr-core space label as the workspace boundary.
 
 Key subsystems:
 - `repo.lua` + `context.lua` + `queue.lua` — Git-root metadata, selected-text anchors, and session-only queues
 - `discovery.lua` — Herdr CLI snapshot discovery and repository matching
+- `app.lua` — Herdr app space discovery and `hc send` delivery
 - `cmux.lua` + `targets.lua` — Host detection, same-workspace cmux discovery, agent-process validation, and terminal paste/submit fallback
 - `submit.lua` — Backend dispatch and clear-on-success queue handling
 - `client.lua` — Direct `herdr agent prompt` delivery
