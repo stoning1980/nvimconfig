@@ -604,6 +604,21 @@ end
 
 test_uses_snapshot_command_without_json_flag()
 
+local function test_excludes_herdr_agent_without_stable_identity()
+  local mapped = targets.herdr({
+    {
+      agent = "cursor",
+      agent_status = "idle",
+      pane_id = "w1:p1",
+      workspace_id = "w1",
+    },
+  })
+
+  assert_equal(#mapped, 0)
+end
+
+test_excludes_herdr_agent_without_stable_identity()
+
 local function test_matches_herdr_app_agents_in_same_space_and_repository()
   local matched = app.targets({
     {
@@ -822,7 +837,7 @@ local function test_uses_only_herdr_inside_herdr()
     herdr_called = true
     callback({ { agent = "cursor", agent_status = "working", agent_id = "agent-1" } }, nil)
   end
-  cmux.discover = function(callback)
+  cmux.discover = function(_, callback)
     cmux_called = true
     callback({
       {
@@ -913,7 +928,7 @@ local function test_uses_only_cmux_inside_cmux()
     herdr_called = true
     callback({ { agent = "cursor", agent_status = "working", agent_id = "agent-1" } }, nil)
   end
-  cmux.discover = function(callback)
+  cmux.discover = function(_, callback)
     cmux_called = true
     callback({
       {
@@ -953,8 +968,19 @@ local function test_discovers_supported_active_cmux_sessions()
         agent_display_name = "Claude Code",
         agent_lifecycle = "idle",
         active_for_surface = true,
+        cwd = "/work/app",
         session_id = "session-claude",
         surface_id = "surface-claude",
+        workspace_id = "workspace-current",
+      },
+      {
+        agent = "codex",
+        agent_display_name = "Codex",
+        agent_lifecycle = "idle",
+        active_for_surface = true,
+        cwd = "/work/other",
+        session_id = "session-other-repo",
+        surface_id = "surface-other-repo",
         workspace_id = "workspace-current",
       },
       {
@@ -974,7 +1000,7 @@ local function test_discovers_supported_active_cmux_sessions()
         workspace_id = "workspace-current",
       },
     },
-  }, "Current workspace")
+  }, "Current workspace", nil, "/work/app")
 
   assert_equal(#targets, 1)
   assert_equal(targets[1].backend, "cmux")
@@ -1026,6 +1052,7 @@ local function test_finds_only_sibling_terminals_in_callers_cmux_workspace()
             panes = {
               { surfaces = { { ref = "surface:caller", type = "terminal", title = "Neovim" } } },
               { surfaces = { { ref = "surface:agent", type = "terminal", title = "Cursor Agent" } } },
+              { surfaces = { { ref = "surface:other-repo", type = "terminal", title = "Other Repo Agent" } } },
               { surfaces = { { ref = "surface:shell", type = "terminal", title = "Shell" } } },
               { surfaces = { { ref = "surface:ambiguous", type = "terminal", title = "Ambiguous" } } },
               { surfaces = { { ref = "surface:browser", type = "browser", title = "Browser" } } },
@@ -1058,8 +1085,27 @@ local function test_finds_only_sibling_terminals_in_callers_cmux_workspace()
                       {
                         name = "node",
                         path = "/Users/test/.local/share/cursor-agent/versions/current/node",
+                        cwd = "/work/app",
                         pid = 42,
                         pgid = 42,
+                        children = {},
+                      },
+                    },
+                  },
+                },
+              },
+              {
+                surfaces = {
+                  {
+                    ref = "surface:other-repo",
+                    foreground_pgids = { 43 },
+                    processes = {
+                      {
+                        name = "codex",
+                        path = "/usr/local/bin/codex",
+                        cwd = "/work/other",
+                        pid = 43,
+                        pgid = 43,
                         children = {},
                       },
                     },
@@ -1122,7 +1168,7 @@ local function test_finds_only_sibling_terminals_in_callers_cmux_workspace()
     },
   }
   local workspace = cmux.workspace(tree)
-  local terminal_targets = cmux.terminal_targets(tree, workspace, processes)
+  local terminal_targets = cmux.terminal_targets(tree, workspace, processes, "/work/app")
 
   assert_equal(#terminal_targets, 1)
   assert_equal(terminal_targets[1].backend, "cmux_terminal")
@@ -1160,6 +1206,7 @@ local function test_discovers_cmux_targets_in_callers_workspace()
               agent_display_name = "Claude Code",
               agent_lifecycle = "idle",
               active_for_surface = true,
+              cwd = "/work/app",
               session_id = "session-claude",
               surface_id = "surface-claude",
             },
@@ -1171,7 +1218,7 @@ local function test_discovers_cmux_targets_in_callers_workspace()
   end
 
   local discovered, discovery_error
-  cmux.discover(function(targets, err)
+  cmux.discover("/work/app", function(targets, err)
     discovered, discovery_error = targets, err
   end)
   vim.wait(100, function()
@@ -1244,6 +1291,7 @@ local function test_falls_back_to_sibling_terminal_when_cmux_has_no_message_rece
                             {
                               name = "node",
                               path = "/Users/test/.local/share/cursor-agent/versions/current/node",
+                              cwd = "/work/app",
                               pid = 42,
                               pgid = 42,
                               children = {},
@@ -1264,7 +1312,7 @@ local function test_falls_back_to_sibling_terminal_when_cmux_has_no_message_rece
   end
 
   local discovered, discovery_error
-  cmux.discover(function(found, err)
+  cmux.discover("/work/app", function(found, err)
     discovered, discovery_error = found, err
   end)
   vim.wait(100, function()
@@ -1319,7 +1367,7 @@ local function test_rejects_cmux_target_that_moved_out_of_callers_workspace()
   end
 
   local current_target, revalidation_error
-  cmux.revalidate({
+  cmux.revalidate("/work/app", {
     backend = "cmux_terminal",
     id = "surface:agent",
     workspace_id = "workspace-current",
@@ -1385,6 +1433,7 @@ local function test_rejects_replaced_agent_on_same_cmux_surface()
                             {
                               name = "node",
                               path = "/Users/test/.local/share/cursor-agent/versions/current/node",
+                              cwd = "/work/app",
                               pid = 43,
                               pgid = 43,
                               children = {},
@@ -1405,7 +1454,7 @@ local function test_rejects_replaced_agent_on_same_cmux_surface()
   end
 
   local current_target, revalidation_error
-  cmux.revalidate({
+  cmux.revalidate("/work/app", {
     backend = "cmux_terminal",
     id = "surface:agent",
     agent = "Cursor",
@@ -1426,6 +1475,70 @@ local function test_rejects_replaced_agent_on_same_cmux_surface()
 end
 
 test_rejects_replaced_agent_on_same_cmux_surface()
+
+local function test_rejects_cmux_agent_that_left_repository()
+  local original_system = vim.system
+  vim.system = function(command, _, callback)
+    if command[2] == "tree" then
+      callback({
+        code = 0,
+        stdout = vim.json.encode({
+          caller = {
+            workspace_id = "workspace-current",
+            workspace_ref = "workspace:7",
+            surface_ref = "surface:caller",
+          },
+          windows = {
+            {
+              workspaces = {
+                { id = "workspace-current", title = "Review workspace" },
+              },
+            },
+          },
+        }),
+        stderr = "",
+      })
+    else
+      callback({
+        code = 0,
+        stdout = vim.json.encode({
+          sessions = {
+            {
+              agent = "claude",
+              agent_display_name = "Claude Code",
+              agent_lifecycle = "idle",
+              active_for_surface = true,
+              cwd = "/work/other",
+              session_id = "session-claude",
+              surface_id = "surface-claude",
+              workspace_id = "workspace-current",
+            },
+          },
+        }),
+        stderr = "",
+      })
+    end
+  end
+
+  local current_target, revalidation_error
+  cmux.revalidate("/work/app", {
+    backend = "cmux",
+    id = "surface-claude",
+    session_id = "session-claude",
+    workspace_id = "workspace-current",
+  }, function(target, err)
+    current_target, revalidation_error = target, err
+  end)
+  vim.wait(100, function()
+    return current_target ~= nil or revalidation_error ~= nil
+  end)
+
+  vim.system = original_system
+  assert_equal(current_target, nil)
+  assert_equal(revalidation_error, "cmux target is no longer active in this repository and workspace")
+end
+
+test_rejects_cmux_agent_that_left_repository()
 
 local function test_rejects_herdr_target_that_left_repo_or_workspace()
   local original_discover = discovery.for_repo
@@ -1625,7 +1738,7 @@ local function test_cmux_revalidation_itself_fails_after_host_change()
   end
 
   local current_target, revalidation_error
-  cmux.revalidate({
+  cmux.revalidate("/work/app", {
     backend = "cmux_terminal",
     id = "surface:agent",
     workspace_id = "workspace-current",
@@ -1866,7 +1979,7 @@ local function test_chunks_large_cmux_terminal_prompt_before_submitting()
     calls[#calls + 1] = { command = command, stdin = options.stdin }
     callback({ code = 0, stdout = "OK", stderr = "" })
   end
-  cmux.revalidate = function(target, callback)
+  cmux.revalidate = function(_, target, callback)
     callback(target, nil)
   end
 
@@ -1931,7 +2044,7 @@ local function test_stops_chunked_paste_when_agent_changes_mid_transfer()
     paste_count = paste_count + 1
     callback({ code = 0, stdout = "OK", stderr = "" })
   end
-  cmux.revalidate = function(_, callback)
+  cmux.revalidate = function(_, _, callback)
     revalidate_count = revalidate_count + 1
     callback(nil, "cmux target agent changed before delivery")
   end
@@ -1975,7 +2088,7 @@ local function test_falls_back_to_chunked_paste_for_large_cmux_agent_message()
     calls[#calls + 1] = { command = command, stdin = options.stdin }
     callback({ code = 0, stdout = "OK", stderr = "" })
   end
-  cmux.revalidate = function(target, callback)
+  cmux.revalidate = function(_, target, callback)
     callback(target, nil)
   end
 

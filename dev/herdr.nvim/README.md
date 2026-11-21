@@ -21,6 +21,8 @@ server or own an agent terminal.
     or Kiro process is supported through guarded paste and submit.
   - cmux can use an active, hook-registered Claude Code, Codex, or Kiro session,
     or paste and submit the prompt in another terminal in the same workspace.
+    The session or foreground agent process must also be inside the current Git
+    repository.
 - `folke/snacks.nvim` for the multi-line comment float; Neovim's `vim.ui.input`
   is used when Snacks is unavailable
 
@@ -56,11 +58,12 @@ repository and process identity, and `hc send` delivers the prompt. Unreported
 agents are accepted only when their foreground process is unambiguously Cursor,
 Claude Code, Codex, or Kiro. Otherwise, `CMUX_SURFACE_ID` selects cmux
 exclusively. Active Claude Code, Codex, and Kiro receivers in the caller's
-workspace use `cmux agent message`. When no registered receiver exists,
-sibling terminal surfaces with an unambiguous foreground Cursor, Claude Code,
-Codex, or Kiro process appear as `[cmux terminal]` targets; plain shells and
-background agents are excluded. Choosing one uses `cmux paste --submit`. This
-fallback supports Cursor without pretending cmux can safely wake or message its
+workspace and Git repository use `cmux agent message`. When no registered
+receiver exists, sibling terminal surfaces with an unambiguous foreground
+Cursor, Claude Code, Codex, or Kiro process in the same repository appear as
+`[cmux terminal]` targets; plain shells, background agents, and agents in other
+repositories are excluded. Choosing one uses `cmux paste --submit`. This fallback
+supports Cursor without pretending cmux can safely wake or message its
 interactive TUI.
 The initial paste fails when the target already has a draft or open dialog.
 Large prompts are split into small sequential requests to avoid cmux 0.65.2

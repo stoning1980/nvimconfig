@@ -10,6 +10,20 @@ local supported_agents = {
 
 local CMUX_PASTE_CHUNK_BYTES = 1400
 
+---@param path string|nil
+---@param root string|nil
+---@return boolean
+local function belongs_to_repo(path, root)
+  if not root then
+    return true
+  end
+  if type(path) ~= "string" then
+    return false
+  end
+  root = root:gsub("/+$", "")
+  return path == root or vim.startswith(path, root .. "/")
+end
+
 ---@param text string
 ---@return string[]
 local function paste_chunks(text)
@@ -57,6 +71,7 @@ local function collect_process_agents(process, foreground, identities, seen)
     seen[process.pid] = true
     identities[#identities + 1] = {
       agent = agent,
+      cwd = process.foreground_cwd or process.cwd,
       process_id = process.pid,
       process_pgid = process.pgid,
       process_path = process.path,
@@ -144,8 +159,9 @@ end
 ---@param tree table
 ---@param workspace table
 ---@param processes table
+---@param repo_root string|nil
 ---@return table[]
-function M.terminal_targets(tree, workspace, processes)
+function M.terminal_targets(tree, workspace, processes, repo_root)
   local targets = {}
   local caller_surface = tree.caller and tree.caller.surface_ref
   local agents = surface_agents(processes, workspace.id)
@@ -154,7 +170,12 @@ function M.terminal_targets(tree, workspace, processes)
       if candidate.id == workspace.id then
         for _, pane in ipairs(candidate.panes or {}) do
           for _, surface in ipairs(pane.surfaces or {}) do
-            if surface.type == "terminal" and surface.ref ~= caller_surface and agents[surface.ref] then
+            if
+              surface.type == "terminal"
+              and surface.ref ~= caller_surface
+              and agents[surface.ref]
+              and belongs_to_repo(agents[surface.ref].cwd, repo_root)
+            then
               local identity = agents[surface.ref]
               targets[#targets + 1] = {
                 backend = "cmux_terminal",
@@ -163,6 +184,8 @@ function M.terminal_targets(tree, workspace, processes)
                 status = "paste + submit",
                 workspace = workspace.title,
                 workspace_id = workspace.id,
+                repo_root = repo_root,
+                cwd = identity.cwd,
                 process_id = identity.process_id,
                 process_pgid = identity.process_pgid,
                 process_path = identity.process_path,
@@ -211,11 +234,23 @@ end
 ---@param payload table
 ---@param workspace string
 ---@param workspace_id string|nil
+---@param repo_root string|nil
 ---@return table[]
-function M.targets(payload, workspace, workspace_id)
+function M.targets(payload, workspace, workspace_id, repo_root)
   local targets = {}
   for _, session in ipairs(payload.sessions or {}) do
-    if supported_agents[session.agent] and session.active_for_surface and session.surface_id and session.session_id then
+    local cwd = session.foreground_cwd
+      or session.cwd
+      or session.launch_cwd
+      or session.launch_working_directory
+      or (session.launch_command and session.launch_command.working_directory)
+    if
+      supported_agents[session.agent]
+      and session.active_for_surface
+      and session.surface_id
+      and session.session_id
+      and belongs_to_repo(cwd, repo_root)
+    then
       targets[#targets + 1] = {
         backend = "cmux",
         id = session.surface_id,
@@ -224,6 +259,8 @@ function M.targets(payload, workspace, workspace_id)
         workspace = workspace,
         workspace_id = session.workspace_id or workspace_id,
         session_id = session.session_id,
+        repo_root = repo_root,
+        cwd = cwd,
       }
     end
   end
@@ -232,19 +269,21 @@ end
 
 ---@param tree table
 ---@param workspace table
+---@param repo_root string
 ---@param callback fun(targets: table[]|nil, err: string|nil)
-local function discover_terminal_targets(tree, workspace, callback)
+local function discover_terminal_targets(tree, workspace, repo_root, callback)
   run_json(M.top_command(workspace.id), function(processes, err)
     if not processes then
       callback(nil, err)
       return
     end
-    callback(M.terminal_targets(tree, workspace, processes), nil)
+    callback(M.terminal_targets(tree, workspace, processes, repo_root), nil)
   end)
 end
 
+---@param repo_root string
 ---@param callback fun(targets: table[]|nil, err: string|nil)
-function M.discover(callback)
+function M.discover(repo_root, callback)
   if not vim.env.CMUX_SURFACE_ID or vim.env.CMUX_SURFACE_ID == "" then
     callback({}, nil)
     return
@@ -264,9 +303,9 @@ function M.discover(callback)
         callback(nil, sessions_err)
         return
       end
-      local targets = M.targets(payload, workspace.title, workspace.id)
+      local targets = M.targets(payload, workspace.title, workspace.id, repo_root)
       if #targets == 0 then
-        discover_terminal_targets(tree, workspace, callback)
+        discover_terminal_targets(tree, workspace, repo_root, callback)
         return
       end
       callback(targets, nil)
@@ -274,9 +313,10 @@ function M.discover(callback)
   end)
 end
 
+---@param repo_root string
 ---@param target table
 ---@param callback fun(target: table|nil, err: string|nil)
-function M.revalidate(target, callback)
+function M.revalidate(repo_root, target, callback)
   if vim.env.HERDR_ENV == "1" or not vim.env.CMUX_SURFACE_ID or vim.env.CMUX_SURFACE_ID == "" then
     callback(nil, "Neovim is no longer running exclusively inside cmux")
     return
@@ -297,7 +337,7 @@ function M.revalidate(target, callback)
         callback(nil, "cmux target is no longer in Neovim's workspace")
         return
       end
-      discover_terminal_targets(tree, workspace, function(current_targets, err)
+      discover_terminal_targets(tree, workspace, repo_root, function(current_targets, err)
         if not current_targets then
           callback(nil, err)
           return
@@ -327,7 +367,7 @@ function M.revalidate(target, callback)
         callback(nil, sessions_err)
         return
       end
-      for _, current in ipairs(M.targets(payload, workspace.title, workspace.id)) do
+      for _, current in ipairs(M.targets(payload, workspace.title, workspace.id, repo_root)) do
         if current.id == target.id then
           if current.session_id ~= target.session_id then
             callback(nil, "cmux target agent changed before delivery")
@@ -337,7 +377,7 @@ function M.revalidate(target, callback)
           return
         end
       end
-      callback(nil, "cmux target is no longer an active agent in Neovim's workspace")
+      callback(nil, "cmux target is no longer active in this repository and workspace")
     end)
   end)
 end
@@ -345,12 +385,16 @@ end
 ---@param target table
 ---@param prompt string
 ---@param callback fun(ok: boolean, err: string|nil)
-local function send_pasted_prompt(target, prompt, callback)
+---@param revalidate fun(target: table, callback: fun(target: table|nil, err: string|nil))|nil
+local function send_pasted_prompt(target, prompt, callback, revalidate)
   if not target.workspace_id then
     callback(false, "cmux target has no workspace identity")
     return
   end
   local chunks = paste_chunks(prompt)
+  revalidate = revalidate or function(current, done)
+    M.revalidate(current.repo_root, current, done)
+  end
   local function paste(index, current_target)
     local command = { "cmux", "paste", "--workspace", current_target.workspace_id, "--surface", current_target.id }
     if index > 1 then
@@ -368,7 +412,7 @@ local function send_pasted_prompt(target, prompt, callback)
           return
         end
         if index < #chunks then
-          M.revalidate(target, function(validated, err)
+          revalidate(current_target, function(validated, err)
             if not validated then
               callback(false, err)
               return
@@ -387,10 +431,11 @@ end
 ---@param target table
 ---@param items table[]
 ---@param callback fun(ok: boolean, err: string|nil)
-function M.send_queue(target, items, callback)
+---@param revalidate fun(target: table, callback: fun(target: table|nil, err: string|nil))|nil
+function M.send_queue(target, items, callback, revalidate)
   local prompt = client.queue_prompt(items)
   if target.backend == "cmux_terminal" or #prompt > CMUX_PASTE_CHUNK_BYTES then
-    send_pasted_prompt(target, prompt, callback)
+    send_pasted_prompt(target, prompt, callback, revalidate)
     return
   end
   vim.system(

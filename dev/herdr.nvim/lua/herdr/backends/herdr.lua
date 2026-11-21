@@ -16,15 +16,20 @@ end
 function M.targets(agents)
   local result = {}
   for _, agent in ipairs(agents) do
-    result[#result + 1] = {
-      backend = "herdr",
-      id = agent.agent_id or agent.pane_id or agent.name,
-      agent = agent.agent or "agent",
-      status = agent.agent_status or agent.status or "unknown",
-      workspace_id = agent.workspace_id,
-      session_id = agent.agent_session and agent.agent_session.value,
-      source = agent,
-    }
+    local session_id = agent.agent_session and agent.agent_session.value
+    local identity = session_id or agent.agent_id
+    if identity then
+      result[#result + 1] = {
+        backend = "herdr",
+        id = agent.agent_id or agent.pane_id or agent.name,
+        agent = agent.agent or "agent",
+        status = agent.agent_status or agent.status or "unknown",
+        workspace_id = agent.workspace_id,
+        session_id = session_id,
+        identity = identity,
+        source = agent,
+      }
+    end
   end
   return result
 end
@@ -60,7 +65,7 @@ function M.revalidate(repo_root, target, callback)
     end
     for _, current in ipairs(M.targets(agents)) do
       if current.id == target.id then
-        if target.session_id and current.session_id ~= target.session_id then
+        if current.identity ~= target.identity then
           callback(nil, "Herdr target agent changed before delivery")
           return
         end

@@ -2,6 +2,7 @@ local root = vim.fn.getcwd()
 package.path = root .. "/dev/herdr.nvim/lua/?.lua;" .. root .. "/dev/herdr.nvim/lua/?/init.lua;" .. package.path
 
 local backends = require("herdr.backends")
+local cmux = require("herdr.cmux")
 local queue = require("herdr.queue")
 local submit = require("herdr.submit")
 local targets = require("herdr.targets")
@@ -275,5 +276,39 @@ local function test_submit_dispatches_through_backend_registry()
 end
 
 test_submit_dispatches_through_backend_registry()
+
+local function test_cmux_adapter_revalidates_continuations_through_registry()
+  local original_cmux_send = cmux.send_queue
+  local original_revalidate = backends.revalidate
+  local repo_seen, target_seen
+  cmux.send_queue = function(target, _, callback, revalidate)
+    assert_equal(type(revalidate), "function")
+    revalidate(target, function(current, err)
+      callback(current ~= nil, err)
+    end)
+  end
+  backends.revalidate = function(repo_root, target, callback)
+    repo_seen, target_seen = repo_root, target
+    callback(target, nil)
+  end
+
+  local ok_result, error_result
+  adapters_by_id().cmux.send_queue({
+    backend = "cmux",
+    id = "surface-agent",
+    repo_root = "/work/app",
+  }, {}, function(ok, err)
+    ok_result, error_result = ok, err
+  end)
+
+  cmux.send_queue = original_cmux_send
+  backends.revalidate = original_revalidate
+  assert_equal(ok_result, true)
+  assert_equal(error_result, nil)
+  assert_equal(repo_seen, "/work/app")
+  assert_equal(target_seen.id, "surface-agent")
+end
+
+test_cmux_adapter_revalidates_continuations_through_registry()
 
 print("herdr_backends_spec: all tests passed")
