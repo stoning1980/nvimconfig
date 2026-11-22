@@ -2629,11 +2629,115 @@ end
 
 test_formats_queued_comments_for_composer_list()
 
+local function test_deletes_one_queued_comment_without_closing_composer()
+  local root_path = "/work/delete-one"
+  local original_snacks = package.loaded["snacks"]
+  local original_keymap_set = vim.keymap.set
+  local mappings = {}
+  local windows = {}
+  queue.clear(root_path)
+  queue.add({
+    repo_root = root_path,
+    path = "lua/first.lua",
+    start_line = 1,
+    text = "first()",
+  }, "First review.")
+  queue.add({
+    repo_root = root_path,
+    path = "lua/second.lua",
+    start_line = 2,
+    text = "second()",
+  }, "Second review.")
+
+  package.loaded["snacks"] = {
+    win = function(options)
+      local buf = vim.api.nvim_create_buf(false, true)
+      local win_id = vim.api.nvim_open_win(buf, options.enter == true, {
+        relative = "editor",
+        row = #windows,
+        col = 0,
+        width = 60,
+        height = 4,
+        style = "minimal",
+      })
+      local fake = { buf = buf, win = win_id, closed = false }
+      function fake:close()
+        self.closed = true
+        if vim.api.nvim_win_is_valid(self.win) then
+          vim.api.nvim_win_close(self.win, true)
+        end
+      end
+      function fake:focus()
+        vim.api.nvim_set_current_win(self.win)
+      end
+      function fake:set_title(title)
+        self.title = title
+      end
+      windows[#windows + 1] = fake
+      return fake
+    end,
+  }
+  vim.keymap.set = function(mode, lhs, rhs, options)
+    if type(rhs) == "function" and options and options.buffer then
+      mappings[options.buffer] = mappings[options.buffer] or {}
+      mappings[options.buffer][lhs] = rhs
+    end
+    original_keymap_set(mode, lhs, rhs, options)
+  end
+
+  local ok, err = xpcall(function()
+    input.open({ width = 0.7, height = 0.3 }, "Review comment", {
+      items = queue.items(root_path),
+      on_add = function() end,
+      on_submit = function() end,
+      on_delete = function(item)
+        queue.remove(root_path, { item })
+      end,
+    })
+
+    local composer = windows[1]
+    local queue_list = windows[2]
+    vim.api.nvim_buf_set_lines(composer.buf, 0, -1, false, { "Keep this draft." })
+    mappings[composer.buf]["<C-d>"]()
+    mappings[queue_list.buf]["<Esc>"]()
+    assert_equal(queue.count(root_path), 2)
+    assert_equal(vim.api.nvim_get_current_win(), composer.win)
+    assert_equal(vim.api.nvim_buf_get_lines(composer.buf, 0, -1, false)[1], "Keep this draft.")
+
+    mappings[composer.buf]["<C-d>"]()
+    vim.api.nvim_win_set_cursor(queue_list.win, { 2, 0 })
+    mappings[queue_list.buf]["<CR>"]()
+
+    assert_equal(queue.count(root_path), 1)
+    assert_equal(queue.items(root_path)[1].comment, "First review.")
+    assert_equal(composer.closed, false)
+    assert_equal(vim.api.nvim_get_current_win(), composer.win)
+    assert_equal(vim.api.nvim_buf_get_lines(composer.buf, 0, -1, false)[1], "Keep this draft.")
+  end, debug.traceback)
+
+  vim.keymap.set = original_keymap_set
+  package.loaded["snacks"] = original_snacks
+  for _, window in ipairs(windows) do
+    if vim.api.nvim_win_is_valid(window.win) then
+      vim.api.nvim_win_close(window.win, true)
+    end
+    if vim.api.nvim_buf_is_valid(window.buf) then
+      vim.api.nvim_buf_delete(window.buf, { force = true })
+    end
+  end
+  queue.clear(root_path)
+  if not ok then
+    error(err)
+  end
+end
+
+test_deletes_one_queued_comment_without_closing_composer()
+
 local function test_submits_on_enter_and_queues_on_ctrl_s()
   local source = table.concat(vim.fn.readfile(root .. "/dev/reviewbuddy.nvim/lua/reviewbuddy/input.lua"), "\n")
   local fallback = source:match("if not ok then(.-)\n  end\n\n  local win")
 
-  assert(source:find('footer = " Enter = Submit all   Ctrl+S = Add to queue', 1, true))
+  assert(source:find('footer = " Enter Submit all   Ctrl+S Queue   Ctrl+D Delete one', 1, true))
   assert(source:find('vim.keymap.set({ "i", "n" }, "<CR>", submit', 1, true))
   assert(source:find('vim.keymap.set({ "i", "n" }, "<C-s>", add', 1, true))
   assert(fallback and fallback:find("actions.on_submit(comment)", 1, true))

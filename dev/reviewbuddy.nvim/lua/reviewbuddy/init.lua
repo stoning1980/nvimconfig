@@ -185,12 +185,15 @@ end
 
 ---@param selection table
 local function comment(selection)
-  local queued = queue.count(selection.repo_root)
-  input.open(config.options.input, string.format("Review comment (queued: %d)", queued), {
+  input.open(config.options.input, "Review comment", {
     items = queue.items(selection.repo_root),
     on_add = function(comment_text)
       queue.add(selection, comment_text)
       notify(string.format("review comment added to queue (%d)", queue.count(selection.repo_root)))
+    end,
+    on_delete = function(item)
+      queue.remove(selection.repo_root, { item })
+      notify(string.format("review comment removed from queue (%d)", queue.count(selection.repo_root)))
     end,
     on_submit = function(comment_text)
       if comment_text ~= "" then

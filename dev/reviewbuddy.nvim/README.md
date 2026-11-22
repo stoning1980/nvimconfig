@@ -47,10 +47,13 @@ The comment float shows the current queue count and lists existing queued
 comments below the input. Press Enter to add its text and discover sessions
 from Neovim's current host and workspace, then choose a destination from the
 picker when more than one is available; a single target is used immediately.
-Ctrl+S adds the text without submitting. Canceling the picker or a delivery
-failure keeps the queue intact; successful delivery removes only the submitted
-snapshot, leaving comments added during delivery queued. Only one submission
-per repository runs at a time.
+Ctrl+S adds the text without submitting. Ctrl+D focuses the queued-comment
+list; move to a comment and press Enter to delete only that item and return to
+the composer without closing it or changing the current draft. Esc returns
+without deleting. Canceling the destination picker or a delivery failure keeps
+the queue intact; successful delivery removes only the submitted snapshot,
+leaving comments added during delivery queued. Only one submission per
+repository runs at a time.
 
 `HERDR_ENV=1` selects Herdr exclusively; agents are discovered with
 `herdr api snapshot` and matched to both the current Herdr workspace and Git
