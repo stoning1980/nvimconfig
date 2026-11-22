@@ -41,7 +41,7 @@ A normalized target always has:
 It must also retain enough host-specific identity to prove at submission time
 that the target has not moved or been replaced. Existing examples use:
 
-- Herdr: `workspace_id` and `session_id`
+- Herdr: `workspace_id` plus a session/agent ID, or a fingerprint of the foreground process set for fresh agents
 - Herdr app: `space_id`, caller and target creation times, and foreground PID
 - cmux: `workspace_id`, session ID, or foreground process identity
 

@@ -11,6 +11,7 @@ local cmux = require("reviewbuddy.cmux")
 local config = require("reviewbuddy.config")
 local discovery = require("reviewbuddy.discovery")
 local diffview = require("reviewbuddy.diffview")
+local herdr_backend = require("reviewbuddy.backends.herdr")
 local reviewbuddy = require("reviewbuddy")
 local client = require("reviewbuddy.client")
 local input = require("reviewbuddy.input")
@@ -622,6 +623,78 @@ local function test_excludes_herdr_agent_without_stable_identity()
 end
 
 test_excludes_herdr_agent_without_stable_identity()
+
+local function herdr_process_info(pane_id, process_group_id, process_id)
+  return {
+    code = 0,
+    stdout = vim.json.encode({
+      id = "cli:pane:process_info",
+      result = {
+        process_info = {
+          foreground_process_group_id = process_group_id,
+          foreground_processes = {
+            {
+              argv = { "codex", "--dangerously-bypass-approvals-and-sandbox" },
+              argv0 = "codex",
+              cmdline = "codex --dangerously-bypass-approvals-and-sandbox",
+              cwd = "/work/app",
+              name = "codex",
+              pid = process_id,
+            },
+          },
+          pane_id = pane_id,
+          shell_pid = 99,
+        },
+        type = "pane_process_info",
+      },
+    }),
+    stderr = "",
+  }
+end
+
+local function test_discovers_fresh_herdr_agent_by_foreground_process()
+  local original_system = vim.system
+  local original_discover = discovery.for_repo
+  local original_workspace = vim.env.HERDR_WORKSPACE_ID
+  vim.env.HERDR_WORKSPACE_ID = "w1"
+  discovery.for_repo = function(repo_root, callback)
+    assert_equal(repo_root, "/work/app")
+    callback({
+      {
+        agent = "codex",
+        agent_status = "idle",
+        cwd = "/work/app",
+        foreground_cwd = "/work/app",
+        pane_id = "w1:p1",
+        terminal_id = "term-1",
+        workspace_id = "w1",
+      },
+    }, nil)
+  end
+  vim.system = function(command, options, callback)
+    assert_equal(table.concat(command, " "), "herdr pane process-info --pane w1:p1")
+    assert_equal(options.text, true)
+    callback(herdr_process_info("w1:p1", 100, 101))
+  end
+
+  local discovered, discovery_error
+  herdr_backend.discover("/work/app", function(found, err)
+    discovered, discovery_error = found, err
+  end)
+  vim.wait(100, function()
+    return discovered ~= nil or discovery_error ~= nil
+  end)
+
+  vim.system = original_system
+  discovery.for_repo = original_discover
+  vim.env.HERDR_WORKSPACE_ID = original_workspace
+  assert_equal(discovery_error, nil)
+  assert_equal(#discovered, 1)
+  assert_equal(discovered[1].id, "w1:p1")
+  assert(vim.startswith(discovered[1].identity, "process:"), "expected foreground process identity")
+end
+
+test_discovers_fresh_herdr_agent_by_foreground_process()
 
 local function test_matches_herdr_app_agents_in_same_space_and_repository()
   local matched = app.targets({
@@ -1574,6 +1647,57 @@ local function test_rejects_herdr_target_that_left_repo_or_workspace()
 end
 
 test_rejects_herdr_target_that_left_repo_or_workspace()
+
+local function test_rejects_replaced_fresh_herdr_agent_process()
+  local original_system = vim.system
+  local original_discover = discovery.for_repo
+  local original_workspace = vim.env.HERDR_WORKSPACE_ID
+  vim.env.HERDR_WORKSPACE_ID = "w1"
+  discovery.for_repo = function(repo_root, callback)
+    assert_equal(repo_root, "/work/app")
+    callback({
+      {
+        agent = "codex",
+        agent_status = "idle",
+        cwd = "/work/app",
+        foreground_cwd = "/work/app",
+        pane_id = "w1:p1",
+        terminal_id = "term-1",
+        workspace_id = "w1",
+      },
+    }, nil)
+  end
+  local process_query_count = 0
+  vim.system = function(_, _, callback)
+    process_query_count = process_query_count + 1
+    callback(
+      herdr_process_info("w1:p1", process_query_count == 1 and 100 or 200, process_query_count == 1 and 101 or 201)
+    )
+  end
+
+  local discovered
+  herdr_backend.discover("/work/app", function(found)
+    discovered = found
+  end)
+  vim.wait(100, function()
+    return discovered ~= nil
+  end)
+  local current_target, revalidation_error
+  herdr_backend.revalidate("/work/app", discovered[1], function(target, err)
+    current_target, revalidation_error = target, err
+  end)
+  vim.wait(100, function()
+    return current_target ~= nil or revalidation_error ~= nil
+  end)
+
+  vim.system = original_system
+  discovery.for_repo = original_discover
+  vim.env.HERDR_WORKSPACE_ID = original_workspace
+  assert_equal(current_target, nil)
+  assert_equal(revalidation_error, "Herdr target agent changed before delivery")
+end
+
+test_rejects_replaced_fresh_herdr_agent_process()
 
 local function test_rejects_replaced_agent_in_same_herdr_app_terminal()
   local original_discover = app.discover

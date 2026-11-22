@@ -54,7 +54,9 @@ per repository runs at a time.
 
 `HERDR_ENV=1` selects Herdr exclusively; agents are discovered with
 `herdr api snapshot` and matched to both the current Herdr workspace and Git
-repository. `HC_TERMINAL_ID` selects Herdr app next: the current terminal's
+repository. A fresh agent without a reported session identity is pinned to its
+foreground process set, which is revalidated before delivery. `HC_TERMINAL_ID`
+selects Herdr app next: the current terminal's
 `herdr.space` label scopes discovery, `hc get` verifies each agent's foreground
 repository and process identity, and `hc send` delivers the prompt. Unreported
 agents are accepted only when their foreground process is unambiguously Cursor,
