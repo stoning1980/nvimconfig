@@ -1,5 +1,5 @@
-local client = require("herdr.client")
-local discovery = require("herdr.discovery")
+local client = require("reviewbuddy.client")
+local discovery = require("reviewbuddy.discovery")
 
 local M = {
   id = "herdr",

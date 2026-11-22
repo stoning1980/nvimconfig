@@ -1,12 +1,12 @@
 # Review backend extension guide
 
-`herdr.nvim` sends queued review comments only to an agent that shares
+`reviewbuddy.nvim` sends queued review comments only to an agent that shares
 Neovim's current host, host workspace or space, and Git repository. Backends
 are internal plugin modules, not a public `setup()` API.
 
 ## Backend contract
 
-Add one module under `lua/herdr/backends/` that returns:
+Add one module under `lua/reviewbuddy/backends/` that returns:
 
 | Field | Contract |
 | --- | --- |
@@ -64,34 +64,51 @@ Every backend must preserve all of these:
 7. Multi-request transports revalidate between continuation requests.
 8. Any discovery, validation, or delivery failure keeps the queue.
 
-The registry in `lua/herdr/backends/init.lua` enforces active-host ownership
+The registry in `lua/reviewbuddy/backends/init.lua` enforces active-host ownership
 before calling an adapter's `revalidate()`. The adapter remains responsible for
 workspace, repository, and target identity checks.
 
 ## Adding a client
 
-1. Create `lua/herdr/backends/<client>.lua` with the full contract.
-2. Add it to the ordered list in `lua/herdr/backends/init.lua`. Ordering is host
+1. Create `lua/reviewbuddy/backends/<client>.lua` with the full contract.
+2. Add it to the ordered list in `lua/reviewbuddy/backends/init.lua`. Ordering is host
    precedence when environments expose more than one marker.
 3. Add target normalization and repository/workspace filtering tests.
 4. Add successful and failing revalidation tests, including workspace movement
    and agent replacement.
 5. Add transport success/failure tests and prove failures retain the queue.
 6. Add the target IDs to the registry dispatch matrix in
-   `tests/herdr_backends_spec.lua`.
+   `tests/reviewbuddy_backends_spec.lua`.
 7. Update this guide and the README architecture list.
 
 Do not add client branches to `targets.lua` or `submit.lua`; those files are
 registry facades.
+
+## Future improvements
+
+Keep these improvements behind tests and preserve the fail-closed routing
+contract:
+
+1. Validate adapter ID uniqueness and every contract field type when loading
+   the registry.
+2. Add a table-driven matrix proving every host/workspace/repository
+   revalidation failure skips transport and retains the queue.
+3. Extract shared repository-path and foreground-agent matching only when a
+   fourth backend demonstrates identical semantics.
+4. Consider a public backend registration API only after the internal contract
+   has remained stable across another client; user-provided adapters would
+   otherwise weaken the host and workspace security boundary.
+5. Remove legacy `:Herdr*` aliases only through a separately documented
+   deprecation, never as part of adding a backend.
 
 ## Test commands
 
 Run the registry contract and backend regressions:
 
 ```sh
-nvim --headless -u NONE -l tests/herdr_backends_spec.lua
+nvim --headless -u NONE -l tests/reviewbuddy_backends_spec.lua
 env -u HC_TERMINAL_ID -u HERDR_ENV CMUX_SURFACE_ID=surface-caller \
-  nvim --headless -u NONE -l tests/herdr_spec.lua
+  nvim --headless -u NONE -l tests/reviewbuddy_spec.lua
 ```
 
 Then run every `tests/*.lua` script, Stylua on changed Lua files, and

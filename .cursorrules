@@ -4,7 +4,7 @@ This is a Neovim configuration built on LazyVim. It includes custom plugins in d
 
 - Entry point: init.lua → lua/config/lazy.lua (bootstraps lazy.nvim + LazyVim)
 - Plugin specs live in lua/plugins/ (each file returns a lazy.nvim spec table)
-- Custom plugins: dev/claudeide.nvim (MCP server), dev/codechat.nvim (AI terminal driver), and dev/herdr.nvim (unified Herdr/cmux review comments)
+- Custom plugins: dev/claudeide.nvim (MCP server), dev/codechat.nvim (AI terminal driver), and dev/reviewbuddy.nvim (unified Herdr/cmux review comments)
 - Leader key: , (comma)
 - Lua style: 2-space indent, 120 column width (stylua.toml)
 - Format with: stylua lua/
@@ -17,8 +17,8 @@ This is a Neovim configuration built on LazyVim. It includes custom plugins in d
 - Custom plugins load via event = "VeryLazy" plus explicit cmd/keys tables
 - Both custom plugins depend on no external Lua libraries (pure Lua + Neovim APIs)
 - codechat.nvim depends on folke/snacks.nvim for terminals and floating windows
-- herdr.nvim depends on folke/snacks.nvim for its comment float, detects whether Neovim is hosted by Herdr, Herdr app, or cmux, discovers targets only in that host's current workspace/space, sends Herdr app prompts with `hc`, and pastes/submits only to sibling cmux terminals with an unambiguous foreground agent process when no hook-backed receiver exists
-- New herdr.nvim clients implement the internal adapter contract in `dev/herdr.nvim/lua/herdr/backends/` and follow `dev/herdr.nvim/docs/backends.md`; do not add client switches to `targets.lua` or `submit.lua`
+- reviewbuddy.nvim depends on folke/snacks.nvim for its comment float, detects whether Neovim is hosted by Herdr, Herdr app, or cmux, discovers targets only in that host's current workspace/space, sends Herdr app prompts with `hc`, and pastes/submits only to sibling cmux terminals with an unambiguous foreground agent process when no hook-backed receiver exists
+- New reviewbuddy.nvim clients implement the internal adapter contract in `dev/reviewbuddy.nvim/lua/reviewbuddy/backends/` and follow `dev/reviewbuddy.nvim/docs/backends.md`; do not add client switches to `targets.lua` or `submit.lua`
 - claudeide.nvim implements WebSocket + MCP protocol from scratch using vim.uv TCP
 
 ## Architecture: claudeide.nvim

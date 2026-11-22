@@ -1,7 +1,7 @@
 local adapters = {
-  require("herdr.backends.herdr"),
-  require("herdr.backends.herdr_app"),
-  require("herdr.backends.cmux"),
+  require("reviewbuddy.backends.herdr"),
+  require("reviewbuddy.backends.herdr_app"),
+  require("reviewbuddy.backends.cmux"),
 }
 
 local required_fields = {

@@ -1,11 +1,11 @@
-local config = require("herdr.config")
-local context = require("herdr.context")
-local diffview = require("herdr.diffview")
-local input = require("herdr.input")
-local queue = require("herdr.queue")
-local repo = require("herdr.repo")
-local submit = require("herdr.submit")
-local targets = require("herdr.targets")
+local config = require("reviewbuddy.config")
+local context = require("reviewbuddy.context")
+local diffview = require("reviewbuddy.diffview")
+local input = require("reviewbuddy.input")
+local queue = require("reviewbuddy.queue")
+local repo = require("reviewbuddy.repo")
+local submit = require("reviewbuddy.submit")
+local targets = require("reviewbuddy.targets")
 
 local M = {}
 
@@ -265,6 +265,8 @@ function M.setup(opts)
     M.submit_queue,
     { desc = "Choose a session and submit queued review comments" }
   )
+  vim.api.nvim_create_user_command("ReviewPick", M.pick, { desc = "Explain review session selection timing" })
+  vim.api.nvim_create_user_command("ReviewRefresh", M.refresh, { desc = "Refresh review sessions for this repository" })
   vim.api.nvim_create_user_command("ReviewStatus", M.status, { desc = "Show review queue and session status" })
 
   -- Compatibility aliases for the original Herdr-only commands.

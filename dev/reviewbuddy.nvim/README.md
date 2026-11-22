@@ -1,6 +1,6 @@
-# herdr.nvim
+# reviewbuddy.nvim
 
-`herdr.nvim` captures Git-anchored review comments in Neovim and sends each
+`reviewbuddy.nvim` captures Git-anchored review comments in Neovim and sends each
 queued batch to a session selected at submit time. When Neovim runs inside
 Herdr, only agents in that Herdr workspace are shown. When it runs inside cmux,
 only supported agents in that cmux workspace are shown. When it runs inside
@@ -36,10 +36,13 @@ panes inside a Git repository.
 | `:ReviewComment` | `F8` or `,hc` in Normal mode | Comment on the cursor line. |
 | `:ReviewCommentVisual` | `F8` or `,hc` in Visual mode | Comment on the exact selected text. |
 | `:ReviewSubmitQueue` | `,hS` | Pick a session and submit all queued comments for this repository. |
+| `:ReviewPick` | `,hp` | Explain when target selection occurs. |
+| `:ReviewRefresh` | `,hr` | Refresh review sessions for the current repository. |
 | `:ReviewStatus` | `,hs` | Display queued comments and available sessions. |
 
 The original `:HerdrComment`, `:HerdrCommentVisual`, `:HerdrSubmitQueue`, and
-`:HerdrStatus` commands remain as compatibility aliases.
+`:HerdrPick`, `:HerdrRefresh`, and `:HerdrStatus` commands remain as
+compatibility aliases.
 
 The comment float shows the current queue count and lists existing queued
 comments below the input. Press Enter to add its text and discover sessions

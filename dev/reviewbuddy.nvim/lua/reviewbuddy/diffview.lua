@@ -186,7 +186,7 @@ function M.snapshot(view, winid, selection, metadata)
   local layout = view and view.cur_layout
   local windows = layout and layout.windows
   if not windows or #windows ~= 2 then
-    return nil, "Herdr comments support only two-way Diffview layouts"
+    return nil, "Review comments support only two-way Diffview layouts"
   end
 
   local anchor_index
@@ -200,7 +200,7 @@ function M.snapshot(view, winid, selection, metadata)
     return nil, "current window is not a Diffview file pane"
   end
   if anchor_index ~= 2 then
-    return nil, "Herdr Diffview comments must be made from the right/current pane"
+    return nil, "Review comments must be made from the right/current Diffview pane"
   end
 
   local base_file = windows[1].file

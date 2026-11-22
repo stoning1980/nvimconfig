@@ -1,4 +1,4 @@
-local app = require("herdr.app")
+local app = require("reviewbuddy.app")
 
 local M = {
   id = "herdr_app",

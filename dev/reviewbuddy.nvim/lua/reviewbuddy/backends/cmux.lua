@@ -1,4 +1,4 @@
-local cmux = require("herdr.cmux")
+local cmux = require("reviewbuddy.cmux")
 
 local M = {
   id = "cmux",
@@ -20,7 +20,7 @@ end
 
 function M.send_queue(target, items, callback)
   cmux.send_queue(target, items, callback, function(current, done)
-    require("herdr.backends").revalidate(current.repo_root, current, done)
+    require("reviewbuddy.backends").revalidate(current.repo_root, current, done)
   end)
 end
 

@@ -1,19 +1,23 @@
 local root = vim.fn.getcwd()
-package.path = root .. "/dev/herdr.nvim/lua/?.lua;" .. root .. "/dev/herdr.nvim/lua/?/init.lua;" .. package.path
+package.path = root
+  .. "/dev/reviewbuddy.nvim/lua/?.lua;"
+  .. root
+  .. "/dev/reviewbuddy.nvim/lua/?/init.lua;"
+  .. package.path
 
-local context = require("herdr.context")
-local app = require("herdr.app")
-local cmux = require("herdr.cmux")
-local config = require("herdr.config")
-local discovery = require("herdr.discovery")
-local diffview = require("herdr.diffview")
-local herdr = require("herdr")
-local client = require("herdr.client")
-local input = require("herdr.input")
-local queue = require("herdr.queue")
-local repo = require("herdr.repo")
-local submit = require("herdr.submit")
-local targets = require("herdr.targets")
+local context = require("reviewbuddy.context")
+local app = require("reviewbuddy.app")
+local cmux = require("reviewbuddy.cmux")
+local config = require("reviewbuddy.config")
+local discovery = require("reviewbuddy.discovery")
+local diffview = require("reviewbuddy.diffview")
+local reviewbuddy = require("reviewbuddy")
+local client = require("reviewbuddy.client")
+local input = require("reviewbuddy.input")
+local queue = require("reviewbuddy.queue")
+local repo = require("reviewbuddy.repo")
+local submit = require("reviewbuddy.submit")
+local targets = require("reviewbuddy.targets")
 
 local function assert_equal(actual, expected, message)
   if actual ~= expected then
@@ -54,7 +58,7 @@ test_extracts_only_visual_block_columns()
 local function test_captures_first_live_visual_selection_before_marks_exist()
   local original_buf = vim.api.nvim_get_current_buf()
   local current_win = vim.api.nvim_get_current_win()
-  local file_buf = vim.fn.bufadd(root .. "/tests/herdr_spec.lua")
+  local file_buf = vim.fn.bufadd(root .. "/tests/reviewbuddy_spec.lua")
   vim.fn.bufload(file_buf)
   vim.api.nvim_win_set_buf(current_win, file_buf)
   pcall(vim.api.nvim_buf_del_mark, file_buf, "<")
@@ -62,7 +66,7 @@ local function test_captures_first_live_visual_selection_before_marks_exist()
   vim.api.nvim_win_set_cursor(current_win, { 1, 0 })
   vim.cmd("normal! v4l")
 
-  local selected = herdr.capture(true)
+  local selected = reviewbuddy.capture(true)
 
   vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "nx", false)
   vim.api.nvim_win_set_buf(current_win, original_buf)
@@ -86,7 +90,7 @@ local function test_normalizes_reverse_blockwise_selection_columns_independently
   vim.api.nvim_win_set_cursor(current_win, { 3, 1 })
   vim.cmd("normal! \22" .. "2k3l")
 
-  local selected = herdr.capture(true)
+  local selected = reviewbuddy.capture(true)
 
   vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "nx", false)
   vim.api.nvim_win_set_buf(current_win, original_buf)
@@ -183,7 +187,7 @@ local function test_rejects_left_side_comments()
   local target = commit_file("lua/example.lua", HEAD_SHA, { "one", "new", "same" })
   local _, err = diffview.snapshot(comparison_view(base, target), 101, version_selection(2, 2, "old"), metadata())
 
-  assert_equal(err, "Herdr Diffview comments must be made from the right/current pane")
+  assert_equal(err, "Review comments must be made from the right/current Diffview pane")
 end
 
 test_rejects_left_side_comments()
@@ -307,7 +311,7 @@ local function test_rejects_unsupported_diffview_states()
   local third = { id = 103, file = commit_file("lua/example.lua", HEAD_SHA, { "third" }) }
   local _, layout_err =
     diffview.snapshot(comparison_view(base, target, { third }), 102, version_selection(1, 1, "new"), metadata())
-  assert_equal(layout_err, "Herdr comments support only two-way Diffview layouts")
+  assert_equal(layout_err, "Review comments support only two-way Diffview layouts")
 
   target.binary = true
   local _, binary_err =
@@ -405,7 +409,7 @@ local function test_captures_nowrite_diffview_buffer_before_file_guard()
     end,
   }
 
-  local selected = herdr.capture(false)
+  local selected = reviewbuddy.capture(false)
 
   package.loaded["diffview.lib"] = old_lib
   vim.api.nvim_win_set_buf(current_win, original_buf)
@@ -462,7 +466,7 @@ local function test_rejects_diffview_buffer_that_differs_from_checked_out_file()
   vim.api.nvim_echo = function(chunks)
     echoed = chunks[1][1]
   end
-  local selected = herdr.capture(false)
+  local selected = reviewbuddy.capture(false)
   vim.wait(50, function()
     return echoed ~= nil
   end)
@@ -517,7 +521,7 @@ local function test_accepts_head_commit_when_worktree_has_moved_on()
     end,
   }
 
-  local selected = herdr.capture(false)
+  local selected = reviewbuddy.capture(false)
 
   package.loaded["diffview.lib"] = old_lib
   vim.api.nvim_win_set_buf(current_win, original_buf)
@@ -550,7 +554,7 @@ local function test_captures_ordinary_file_in_extra_diffview_tab_split()
     end,
   }
 
-  local selected = herdr.capture(false)
+  local selected = reviewbuddy.capture(false)
 
   package.loaded["diffview.lib"] = old_lib
   vim.api.nvim_win_set_buf(current_win, original_buf)
@@ -2362,7 +2366,7 @@ test_dispatches_cmux_terminal_target_to_cmux_transport()
 
 local function test_picks_between_multiple_targets_before_submitting()
   local root_path = "/work/picker"
-  local original_capture = herdr.capture
+  local original_capture = reviewbuddy.capture
   local original_targets_discover = targets.discover
   local original_herdr_discover = discovery.for_repo
   local original_select = vim.ui.select
@@ -2376,7 +2380,7 @@ local function test_picks_between_multiple_targets_before_submitting()
     start_line = 1,
     text = "run()",
   }, "Review this.")
-  herdr.capture = function()
+  reviewbuddy.capture = function()
     return { repo_root = root_path }
   end
   targets.discover = function(_, callback)
@@ -2409,9 +2413,9 @@ local function test_picks_between_multiple_targets_before_submitting()
     callback(true, nil)
   end
 
-  herdr.submit_queue()
+  reviewbuddy.submit_queue()
 
-  herdr.capture = original_capture
+  reviewbuddy.capture = original_capture
   targets.discover = original_targets_discover
   discovery.for_repo = original_herdr_discover
   vim.ui.select = original_select
@@ -2424,7 +2428,7 @@ test_picks_between_multiple_targets_before_submitting()
 
 local function test_skips_picker_for_single_target()
   local root_path = "/work/single-target"
-  local original_capture = herdr.capture
+  local original_capture = reviewbuddy.capture
   local original_targets_discover = targets.discover
   local original_select = vim.ui.select
   local original_send = submit.send
@@ -2437,7 +2441,7 @@ local function test_skips_picker_for_single_target()
     start_line = 1,
     text = "run()",
   }, "Review this.")
-  herdr.capture = function()
+  reviewbuddy.capture = function()
     return { repo_root = root_path }
   end
   targets.discover = function(_, callback)
@@ -2459,9 +2463,9 @@ local function test_skips_picker_for_single_target()
     callback(true, nil)
   end
 
-  herdr.submit_queue()
+  reviewbuddy.submit_queue()
 
-  herdr.capture = original_capture
+  reviewbuddy.capture = original_capture
   targets.discover = original_targets_discover
   vim.ui.select = original_select
   submit.send = original_send
@@ -2472,7 +2476,7 @@ end
 test_skips_picker_for_single_target()
 
 local function test_does_not_request_manual_submit_for_cmux_terminal()
-  local source = table.concat(vim.fn.readfile(root .. "/dev/herdr.nvim/lua/herdr/init.lua"), "\n")
+  local source = table.concat(vim.fn.readfile(root .. "/dev/reviewbuddy.nvim/lua/reviewbuddy/init.lua"), "\n")
   assert(not source:find("submit it manually", 1, true))
 end
 
@@ -2502,7 +2506,7 @@ end
 test_formats_queued_comments_for_composer_list()
 
 local function test_submits_on_enter_and_queues_on_ctrl_s()
-  local source = table.concat(vim.fn.readfile(root .. "/dev/herdr.nvim/lua/herdr/input.lua"), "\n")
+  local source = table.concat(vim.fn.readfile(root .. "/dev/reviewbuddy.nvim/lua/reviewbuddy/input.lua"), "\n")
   local fallback = source:match("if not ok then(.-)\n  end\n\n  local win")
 
   assert(source:find('footer = " Enter = Submit all   Ctrl+S = Add to queue', 1, true))
@@ -2525,10 +2529,10 @@ end
 test_formats_changed_queue_item_as_current_location()
 
 local function test_resolves_git_context_for_file()
-  local info = repo.for_path(root .. "/tests/herdr_spec.lua")
+  local info = repo.for_path(root .. "/tests/reviewbuddy_spec.lua")
 
   assert_equal(info.root, root)
-  assert_equal(info.relpath, "tests/herdr_spec.lua")
+  assert_equal(info.relpath, "tests/reviewbuddy_spec.lua")
   assert(info.branch and info.branch ~= "", "expected branch")
   assert(info.revision and #info.revision >= 7, "expected revision")
 end
@@ -2551,42 +2555,66 @@ local function test_resolves_git_context_for_symlinked_file()
   local linked_root = temp .. "/repo"
   assert(vim.uv.fs_symlink(root, linked_root))
 
-  local info = repo.for_path(linked_root .. "/tests/herdr_spec.lua")
+  local info = repo.for_path(linked_root .. "/tests/reviewbuddy_spec.lua")
   vim.fn.delete(temp, "rf")
 
   assert_equal(info.root, root)
-  assert_equal(info.relpath, "tests/herdr_spec.lua")
+  assert_equal(info.relpath, "tests/reviewbuddy_spec.lua")
 end
 
 test_resolves_git_context_for_symlinked_file()
 
-local function test_reserves_f8_for_herdr_not_claudeide()
+local function test_reserves_f8_for_reviewbuddy_not_claudeide()
   local claudeide_spec = table.concat(vim.fn.readfile(root .. "/lua/plugins/claudeide.lua"), "\n")
-  local herdr_spec = table.concat(vim.fn.readfile(root .. "/lua/plugins/herdr.lua"), "\n")
+  local reviewbuddy_spec = table.concat(vim.fn.readfile(root .. "/lua/plugins/reviewbuddy.lua"), "\n")
 
   assert(not claudeide_spec:find('"<F8>"', 1, true), "Claude IDE must not own F8")
   assert(not claudeide_spec:find('"<S-F8>"', 1, true), "Claude IDE must not own Shift+F8")
-  assert(herdr_spec:find('"<F8>"', 1, true), "Herdr must own F8")
-  assert(not herdr_spec:find('":<C-u>ReviewCommentVisual<cr>"', 1, true), "Visual F8 must not open command line")
-  assert(herdr_spec:find('"<cmd>ReviewCommentVisual<cr>"', 1, true), "Visual F8 must use <cmd>")
+  assert(reviewbuddy_spec:find('"<F8>"', 1, true), "ReviewBuddy must own F8")
+  assert(not reviewbuddy_spec:find('":<C-u>ReviewCommentVisual<cr>"', 1, true), "Visual F8 must not open command line")
+  assert(reviewbuddy_spec:find('"<cmd>ReviewCommentVisual<cr>"', 1, true), "Visual F8 must use <cmd>")
 end
 
-test_reserves_f8_for_herdr_not_claudeide()
+test_reserves_f8_for_reviewbuddy_not_claudeide()
 
 local function test_exposes_a_submit_queue_command()
-  local herdr_spec = table.concat(vim.fn.readfile(root .. "/lua/plugins/herdr.lua"), "\n")
-  local herdr_init = table.concat(vim.fn.readfile(root .. "/dev/herdr.nvim/lua/herdr/init.lua"), "\n")
-  assert(herdr_spec:find('"ReviewSubmitQueue"', 1, true), "ReviewSubmitQueue must be lazy-loaded")
-  assert(herdr_init:find('"ReviewSubmitQueue"', 1, true), "ReviewSubmitQueue must submit the unified queue")
-  assert(herdr_spec:find('"HerdrSubmitQueue"', 1, true), "Herdr must expose queue submission")
+  local reviewbuddy_spec = table.concat(vim.fn.readfile(root .. "/lua/plugins/reviewbuddy.lua"), "\n")
+  local reviewbuddy_init = table.concat(vim.fn.readfile(root .. "/dev/reviewbuddy.nvim/lua/reviewbuddy/init.lua"), "\n")
+  assert(reviewbuddy_spec:find('"ReviewSubmitQueue"', 1, true), "ReviewSubmitQueue must be lazy-loaded")
+  assert(reviewbuddy_spec:find('"ReviewPick"', 1, true), "ReviewPick must be lazy-loaded")
+  assert(reviewbuddy_spec:find('"ReviewRefresh"', 1, true), "ReviewRefresh must be lazy-loaded")
+  assert(reviewbuddy_init:find('"ReviewSubmitQueue"', 1, true), "ReviewSubmitQueue must submit the unified queue")
+  assert(reviewbuddy_spec:find('"HerdrSubmitQueue"', 1, true), "Herdr must expose queue submission")
 end
 
 test_exposes_a_submit_queue_command()
 
 local function test_uses_messages_instead_of_toast_notifications()
-  local herdr_init = table.concat(vim.fn.readfile(root .. "/dev/herdr.nvim/lua/herdr/init.lua"), "\n")
-  assert(not herdr_init:find("vim.notify(", 1, true), "Herdr feedback must not create toast notifications")
+  local reviewbuddy_init = table.concat(vim.fn.readfile(root .. "/dev/reviewbuddy.nvim/lua/reviewbuddy/init.lua"), "\n")
+  assert(not reviewbuddy_init:find("vim.notify(", 1, true), "ReviewBuddy feedback must not create toast notifications")
 end
 
 test_uses_messages_instead_of_toast_notifications()
-print("herdr_spec: all tests passed")
+
+local function test_registers_review_commands_and_all_legacy_aliases()
+  reviewbuddy.setup({})
+  for _, command in ipairs({
+    "ReviewComment",
+    "ReviewCommentVisual",
+    "ReviewSubmitQueue",
+    "ReviewPick",
+    "ReviewRefresh",
+    "ReviewStatus",
+    "HerdrComment",
+    "HerdrCommentVisual",
+    "HerdrSubmitQueue",
+    "HerdrPick",
+    "HerdrRefresh",
+    "HerdrStatus",
+  }) do
+    assert_equal(vim.fn.exists(":" .. command), 2, command .. " must be registered")
+  end
+end
+
+test_registers_review_commands_and_all_legacy_aliases()
+print("reviewbuddy_spec: all tests passed")

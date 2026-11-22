@@ -1,11 +1,15 @@
 local root = vim.fn.getcwd()
-package.path = root .. "/dev/herdr.nvim/lua/?.lua;" .. root .. "/dev/herdr.nvim/lua/?/init.lua;" .. package.path
+package.path = root
+  .. "/dev/reviewbuddy.nvim/lua/?.lua;"
+  .. root
+  .. "/dev/reviewbuddy.nvim/lua/?/init.lua;"
+  .. package.path
 
-local backends = require("herdr.backends")
-local cmux = require("herdr.cmux")
-local queue = require("herdr.queue")
-local submit = require("herdr.submit")
-local targets = require("herdr.targets")
+local backends = require("reviewbuddy.backends")
+local cmux = require("reviewbuddy.cmux")
+local queue = require("reviewbuddy.queue")
+local submit = require("reviewbuddy.submit")
+local targets = require("reviewbuddy.targets")
 
 local function assert_equal(actual, expected, message)
   if actual ~= expected then
@@ -311,4 +315,4 @@ end
 
 test_cmux_adapter_revalidates_continuations_through_registry()
 
-print("herdr_backends_spec: all tests passed")
+print("reviewbuddy_backends_spec: all tests passed")

@@ -19,7 +19,7 @@ plugins in `dev/` that provide AI coding assistant integration.
 - `lua/plugins/` — Plugin specs (each file returns a lazy.nvim spec table)
 - `dev/claudeide.nvim/` — Custom plugin: WebSocket-based MCP server making Neovim an IDE endpoint for Claude CLI
 - `dev/codechat.nvim/` — Custom plugin: Terminal driver for AI coding agents (Claude, Cursor, ttadk wrappers)
-- `dev/herdr.nvim/` — Custom plugin: Git-anchored review comments routed to Herdr or same-workspace cmux agents
+- `dev/reviewbuddy.nvim/` — Custom plugin: Git-anchored review comments routed to Herdr or same-workspace cmux agents
 
 ### Custom Plugin: claudeide.nvim
 
@@ -41,7 +41,7 @@ Key subsystems:
 - `ui.lua` — Comment popup (Snacks float) before sending context
 - `config.lua` — Agent registry (command, setup steps, login shell, fallbacks)
 
-### Custom Plugin: herdr.nvim
+### Custom Plugin: reviewbuddy.nvim
 
 Queues typed review comments plus exact visual selection context for the current
 Git repository, detects whether Neovim is hosted by Herdr, Herdr app, or cmux, then shows
@@ -50,7 +50,7 @@ use their herdr-core space label as the workspace boundary.
 
 Key subsystems:
 - `repo.lua` + `context.lua` + `queue.lua` — Git-root metadata, selected-text anchors, and session-only queues
-- `backends/` — Ordered host registry and built-in adapters; see `dev/herdr.nvim/docs/backends.md` before adding a client
+- `backends/` — Ordered host registry and built-in adapters; see `dev/reviewbuddy.nvim/docs/backends.md` before adding a client
 - `discovery.lua` — Herdr CLI snapshot discovery and repository matching
 - `app.lua` — Herdr app space discovery and `hc send` delivery
 - `cmux.lua` — Same-workspace cmux discovery, agent-process validation, and terminal paste/submit fallback

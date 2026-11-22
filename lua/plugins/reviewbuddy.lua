@@ -1,12 +1,14 @@
 return {
-  dir = vim.fn.stdpath("config") .. "/dev/herdr.nvim",
-  name = "herdr.nvim",
+  dir = vim.fn.stdpath("config") .. "/dev/reviewbuddy.nvim",
+  name = "reviewbuddy.nvim",
   event = "VeryLazy",
   dependencies = { "folke/snacks.nvim" },
   cmd = {
     "ReviewComment",
     "ReviewCommentVisual",
     "ReviewSubmitQueue",
+    "ReviewPick",
+    "ReviewRefresh",
     "ReviewStatus",
     "HerdrComment",
     "HerdrCommentVisual",
@@ -22,12 +24,12 @@ return {
     { "<leader>hc", "<cmd>ReviewComment<cr>", desc = "Queue review comment" },
     { "<leader>hc", "<cmd>ReviewCommentVisual<cr>", mode = "v", desc = "Queue selected review comment" },
     { "<leader>hS", "<cmd>ReviewSubmitQueue<cr>", desc = "Choose session and submit review comments" },
-    { "<leader>hp", "<cmd>HerdrPick<cr>", desc = "Explain review session selection" },
-    { "<leader>hr", "<cmd>HerdrRefresh<cr>", desc = "Refresh review sessions" },
+    { "<leader>hp", "<cmd>ReviewPick<cr>", desc = "Explain review session selection" },
+    { "<leader>hr", "<cmd>ReviewRefresh<cr>", desc = "Refresh review sessions" },
     { "<leader>hs", "<cmd>ReviewStatus<cr>", desc = "Review queue and session status" },
   },
   opts = {},
   config = function(_, opts)
-    require("herdr").setup(opts)
+    require("reviewbuddy").setup(opts)
   end,
 }

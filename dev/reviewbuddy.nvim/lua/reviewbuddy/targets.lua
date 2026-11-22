@@ -1,5 +1,5 @@
-local backends = require("herdr.backends")
-local herdr = require("herdr.backends.herdr")
+local backends = require("reviewbuddy.backends")
+local herdr = require("reviewbuddy.backends.herdr")
 
 local M = {}
 

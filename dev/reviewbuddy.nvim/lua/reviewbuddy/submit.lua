@@ -1,6 +1,6 @@
-local backends = require("herdr.backends")
-local queue = require("herdr.queue")
-local targets = require("herdr.targets")
+local backends = require("reviewbuddy.backends")
+local queue = require("reviewbuddy.queue")
+local targets = require("reviewbuddy.targets")
 
 local M = {}
 local active = {}

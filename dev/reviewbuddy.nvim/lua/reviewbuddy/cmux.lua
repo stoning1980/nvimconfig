@@ -1,4 +1,4 @@
-local client = require("herdr.client")
+local client = require("reviewbuddy.client")
 
 local M = {}
 
