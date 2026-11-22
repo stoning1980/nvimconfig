@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 This is a Neovim configuration built on **LazyVim** (the distribution framework on top of lazy.nvim). It includes custom
-plugins in `dev/` that provide AI coding assistant integration.
+plugins in `dev/` for mobile-device actions and routing review comments to coding agents.
 
 ## Architecture
 
@@ -17,29 +17,13 @@ plugins in `dev/` that provide AI coding assistant integration.
 
 - `lua/config/` — Core config: options, keymaps, autocmds (loaded by LazyVim conventions)
 - `lua/plugins/` — Plugin specs (each file returns a lazy.nvim spec table)
-- `dev/claudeide.nvim/` — Custom plugin: WebSocket-based MCP server making Neovim an IDE endpoint for Claude CLI
-- `dev/codechat.nvim/` — Custom plugin: Terminal driver for AI coding agents (Claude, Cursor, ttadk wrappers)
+- `dev/adbhelper.nvim/` — Custom plugin: Android device text input plus Android/iOS Simulator app actions
 - `dev/reviewbuddy.nvim/` — Custom plugin: Git-anchored review comments routed to Herdr or same-workspace cmux agents
 
-### Custom Plugin: claudeide.nvim
+### Custom Plugin: adbhelper.nvim
 
-A pure-Lua WebSocket server implementing the MCP protocol (JSON-RPC 2.0, version `2025-03-26`) using `vim.uv` for async I/O. It allows Claude CLI to connect via `/ide` and interact with the editor.
-
-Key subsystems:
-- `server/` — TCP listener, HTTP upgrade handshake, WebSocket frame codec
-- `mcp.lua` + `tools.lua` — MCP tool dispatch (`openFile`, `openDiff`)
-- `diff.lua` — Blocking side-by-side diff with accept/deny workflow
-- `lockfile.lua` — Writes discovery files to `~/.claude/ide/<port>.lock`
-- `selection.lua` — Broadcasts `selection_changed` notifications
-
-### Custom Plugin: codechat.nvim
-
-Drives CLI agents in Snacks terminals. Injects file/selection context via bracketed paste. Depends on `folke/snacks.nvim`.
-
-Key subsystems:
-- `terminal.lua` — Terminal lifecycle and input injection
-- `ui.lua` — Comment popup (Snacks float) before sending context
-- `config.lua` — Agent registry (command, setup steps, login shell, fallbacks)
+Provides Android device discovery and text input, Android proxy/app actions,
+and iOS Simulator app actions. It is loaded by `lua/plugins/adb.lua`.
 
 ### Custom Plugin: reviewbuddy.nvim
 
@@ -78,6 +62,6 @@ stylua lua/
 
 ## Environment Dependencies
 
-- Node.js 22 via nvm (required for `ttadk` and `cl` agent commands)
-- `ttadk` CLI (internal TikTok tool) for wrapped agent access
-- `claude` or `cl` CLI for direct Claude Code access
+- `adb` for Android actions; `xcrun simctl` for iOS Simulator actions
+- One supported host when using ReviewBuddy: Herdr, Herdr app/herdr-core, or cmux
+- A supported coding agent running in Neovim's current host workspace and Git repository

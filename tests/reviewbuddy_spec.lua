@@ -2564,18 +2564,15 @@ end
 
 test_resolves_git_context_for_symlinked_file()
 
-local function test_reserves_f8_for_reviewbuddy_not_claudeide()
-  local claudeide_spec = table.concat(vim.fn.readfile(root .. "/lua/plugins/claudeide.lua"), "\n")
+local function test_reserves_f8_for_reviewbuddy()
   local reviewbuddy_spec = table.concat(vim.fn.readfile(root .. "/lua/plugins/reviewbuddy.lua"), "\n")
 
-  assert(not claudeide_spec:find('"<F8>"', 1, true), "Claude IDE must not own F8")
-  assert(not claudeide_spec:find('"<S-F8>"', 1, true), "Claude IDE must not own Shift+F8")
   assert(reviewbuddy_spec:find('"<F8>"', 1, true), "ReviewBuddy must own F8")
   assert(not reviewbuddy_spec:find('":<C-u>ReviewCommentVisual<cr>"', 1, true), "Visual F8 must not open command line")
   assert(reviewbuddy_spec:find('"<cmd>ReviewCommentVisual<cr>"', 1, true), "Visual F8 must use <cmd>")
 end
 
-test_reserves_f8_for_reviewbuddy_not_claudeide()
+test_reserves_f8_for_reviewbuddy()
 
 local function test_exposes_a_submit_queue_command()
   local reviewbuddy_spec = table.concat(vim.fn.readfile(root .. "/lua/plugins/reviewbuddy.lua"), "\n")

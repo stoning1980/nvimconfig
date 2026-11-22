@@ -5,8 +5,7 @@ queued batch to a session selected at submit time. When Neovim runs inside
 Herdr, only agents in that Herdr workspace are shown. When it runs inside cmux,
 only supported agents in that cmux workspace are shown. When it runs inside
 Herdr app, only agents in the same app space are shown. It is deliberately
-separate from `claudeide.nvim` and `codechat.nvim`: it does not host an MCP
-server or own an agent terminal.
+focused: it does not host an MCP server or own an agent terminal.
 
 ## Requirements
 

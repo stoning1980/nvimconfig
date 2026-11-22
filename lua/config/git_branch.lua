@@ -11,9 +11,8 @@
 -- branch, such as `foo`. A detached checkout at `origin/foo` is shown as `foo`.
 --
 -- A checkout that does not move HEAD leaves every buffer alone. A checkout
--- that does closes tabs, files, terminals, and the CodeChat session, then
--- shows the dashboard. A saved session for the branch you land on can still
--- be restored from there.
+-- that does closes tabs, files, and terminals, then shows the dashboard. A
+-- saved session for the branch you land on can still be restored from there.
 
 local M = {}
 
@@ -273,8 +272,8 @@ local function head_where(cwd, branch, cb)
 end
 
 --- Check out `branch` in `cwd`. On a real switch, close open files, tabs,
---- terminals, and the CodeChat session, then show the dashboard. The result
---- names the HEAD branch. A detached checkout at `origin/foo` is shown as `foo`.
+--- terminals, then show the dashboard. The result names the HEAD branch. A
+--- detached checkout at `origin/foo` is shown as `foo`.
 ---@param cwd string
 ---@param branch string
 ---@param head string?

@@ -206,15 +206,6 @@ local function unsaved_buffers()
   return out
 end
 
-local function stop_codechat()
-  -- Only if the plugin is already loaded. Requiring it here would start the
-  -- agent module just to discover that nothing is running.
-  local term = package.loaded["codechat.terminal"]
-  if type(term) == "table" and type(term.stop_all) == "function" then
-    pcall(term.stop_all)
-  end
-end
-
 local function stop_lsp()
   local get = vim.lsp and vim.lsp.get_clients
   if type(get) ~= "function" then
@@ -364,7 +355,6 @@ local function reset_editor(before_dashboard)
 
   local ok, err = xpcall(function()
     close_diffview()
-    stop_codechat()
     stop_lsp()
 
     -- Plugin autocmds (Diffview follow, file explorers, session savers,

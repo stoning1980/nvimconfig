@@ -9,8 +9,8 @@ cloned to `~/.config/nvim`.
 - **LazyVim** distribution on top of **lazy.nvim** (`init.lua` → `lua/config/lazy.lua`).
 - Plugin versions are pinned in `lazy-lock.json`; enabled LazyVim extras are listed in `lazyvim.json`.
 - Two **in-repo custom plugins** under `dev/` (no separate install — they load from the repo):
-  - `dev/claudeide.nvim` — WebSocket MCP server making Neovim an IDE endpoint for the Claude CLI (`/ide`). Keys: `<F8>`, `<leader>a*`.
-  - `dev/codechat.nvim` — drives CLI coding agents in Snacks terminals. Key: `<F9>`, `<leader>ac`/`<leader>ap`.
+  - `dev/adbhelper.nvim` — Android text input plus Android/iOS Simulator app and proxy actions. Keys: `<F12>` / `Shift+F12`.
+  - `dev/reviewbuddy.nvim` — routes Git-anchored review comments to agents in Neovim's current Herdr, Herdr app, or cmux workspace. Key: `<F8>`.
 - **Leader key** is `,` (comma). Lua style: 2-space indent, 120 columns (`stylua.toml`).
 - Full custom keymap cheatsheet lives at the top of `lua/config/keymaps.lua`. Repo conventions are documented in `CLAUDE.md`.
 
@@ -32,15 +32,15 @@ cloned to `~/.config/nvim`.
 
 | Tool | Why |
 |------|-----|
-| **Node.js 22 via nvm** | Required by the AI agents (`ttadk`, `cl`/`claude`, `relay`, `cursor-agent`); also many LSP servers |
+| **Node.js (current LTS)** | Required by many JavaScript/TypeScript LSP servers and tools |
 | **stylua** | Formats Lua in this repo (`stylua lua/`) |
 | **JDK** (17+) | LazyVim `lang.java` extra (jdtls) |
 
-### Optional (mobile / AI-agent workflow)
+### Optional (mobile / ReviewBuddy workflow)
 
 - **adb** / Android SDK platform-tools — the mobile-engineering workflow this config targets.
-- CLI coding agents, each logged in once (see [AI agents](#ai-agents-optional)):
-  - `ttadk` (internal TikTok wrapper), `cl` or `claude`, `cursor-agent`, `relay`.
+- A supported ReviewBuddy host: Herdr, Herdr app/herdr-core, or cmux.
+- A supported coding agent running in the same host workspace and Git repository as Neovim.
 - Language toolchains as needed by the enabled extras: TypeScript/Node, Kotlin, etc.
 
 ### Install prerequisites
@@ -51,9 +51,9 @@ macOS (Homebrew):
 brew install neovim git ripgrep fd lazygit stylua gcc make
 # A Nerd Font, e.g.:
 brew install --cask font-jetbrains-mono-nerd-font
-# nvm (then install Node 22):
+# nvm (then install the current LTS):
 brew install nvm   # follow brew's post-install to add nvm to your shell rc
-nvm install 22
+nvm install --lts
 ```
 
 Debian/Ubuntu:
@@ -64,7 +64,7 @@ sudo apt install -y git ripgrep fd-find build-essential
 # Neovim: prefer a 0.11+ build (apt's may be old) — use the official appimage,
 # the unstable PPA, or a release tarball. Verify: nvim --version
 # lazygit, stylua: install from their GitHub releases or your package manager.
-# nvm: https://github.com/nvm-sh/nvm  then: nvm install 22
+# nvm: https://github.com/nvm-sh/nvm  then: nvm install --lts
 ```
 
 ## Installation
@@ -118,20 +118,19 @@ sudo apt install -y git ripgrep fd-find build-essential
   - `F11` copy repo-relative path.
 - Formatting check: `stylua --check lua/` should report no diffs.
 
-## AI agents (optional)
+## ReviewBuddy (optional)
 
-`<F9>` (codechat) and `<F8>` (claudeide) drive external agents. They are optional — core
-editing works without them. Configuration lives in `lua/plugins/codechat.lua`; the picker
-offers: ttadk Claude, ttadk Cursor, Claude (`cl`/`claude`), Cursor (`cursor-agent`), Relay (`relay`).
+`<F8>` opens a Git-anchored review comment for the cursor line or exact visual
+selection. ReviewBuddy discovers agents only in Neovim's current host workspace
+or app space and current Git repository, then submits through Herdr, herdr-core,
+or cmux. It does not start or own an agent terminal.
 
 Setup notes:
 
-- Most agents run through an **interactive login shell** and call `nvm use 22`, so ensure
-  `nvm` is installed and Node 22 is available (`nvm install 22`).
-- Install and log in to each CLI you intend to use **once** (`claude`, `cursor-agent`, `relay`,
-  `ttadk`). `ttadk` is an internal tool and is only available on corporate machines.
-- If an agent binary lives somewhere non-standard, adjust its `command`/`fallbacks` in
-  `lua/plugins/codechat.lua`.
+- Launch Neovim and the target agent inside the same Herdr, Herdr app, or cmux
+  workspace.
+- Keep the agent's foreground working directory inside the same Git repository.
+- ReviewBuddy uses `herdr`, `hc`, or `cmux` from `PATH`, depending on the host.
 
 ## Notes & gotchas
 

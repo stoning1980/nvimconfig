@@ -655,13 +655,6 @@ local function unsaved_outside(keep)
   return n
 end
 
-local function stop_codechat()
-  local term = package.loaded["codechat.terminal"]
-  if type(term) == "table" and type(term.stop_all) == "function" then
-    pcall(term.stop_all)
-  end
-end
-
 local function stop_terminals()
   for _, buf in ipairs(vim.api.nvim_list_bufs()) do
     if vim.api.nvim_buf_is_valid(buf) and vim.bo[buf].buftype == "terminal" then
@@ -735,7 +728,6 @@ local function close_other_buffers(paths)
   if vim.fn.exists(":DiffviewClose") == 2 then
     pcall(vim.cmd, "silent! DiffviewClose")
   end
-  stop_codechat()
   stop_terminals()
 
   local saved_hidden = vim.o.hidden

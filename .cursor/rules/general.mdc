@@ -18,5 +18,4 @@ globs: **/*.lua
 ## Custom Plugins
 - Located in `dev/` directory, loaded via `dir = vim.fn.stdpath("config") .. "/dev/..."` specs
 - Use `event = "VeryLazy"` plus explicit `cmd` and `keys` tables for deferred loading
-- Zero external Lua dependencies — pure Lua + Neovim built-in APIs only
-- codechat.nvim is the exception: depends on folke/snacks.nvim
+- Prefer pure Lua + Neovim built-in APIs; ReviewBuddy also depends on folke/snacks.nvim for its comment float

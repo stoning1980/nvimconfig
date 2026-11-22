@@ -20,5 +20,5 @@ Commands live in `lua/config/`, `lua/plugins/`, and `dev/`. The function-key che
 ## How
 
 - Edit with `lark-cli docs` as the user (`--as user`). Follow the lark-doc skill. Use `str_replace` or `block_replace` on the affected cells only. Do not overwrite the document.
-- Match the existing voice: mode in italics, then an em dash, then what the key does. Example: `*Normal / Visual / Terminal* — Close the CodeChat window, terminal, and session.`
+- Match the existing voice: mode in italics, then an em dash, then what the key does. Example: `*Normal / Visual* — Review the cursor line or exact selection.`
 - Fetch the changed rows with a keyword search and confirm they match the code before finishing.

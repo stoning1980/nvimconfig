@@ -17,8 +17,8 @@
 -- │ F7      : n → grep open buffers  |  v → grep selection in buffers    │
 -- │ F8      : n → review line | v → selection; submit one / pick many    │
 -- │ S-F8    : Not mapped.                                                │
--- │ F9      : n → send file / v → send selection to AI agent (codechat)  │
--- │ S-F9    : n/v/t → close CodeChat window, terminal, and session       │
+-- │ F9      : Not mapped.                                                │
+-- │ S-F9    : Not mapped.                                                │
 -- │ F10     : n → mark word / v → mark selection (interestingwords)      │
 -- │ S-F10   : n → clear all interestingwords marks                       │
 -- │ F11     : n → copy repo-rel path | v → repo-rel path + line range    │
