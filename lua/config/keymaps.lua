@@ -25,7 +25,14 @@
 -- │ S-F11   : n/v/i → copy-path menu (abs / rel / name / ~)              │
 -- │ F12     : n → next WORD, else first | v → send, stays (adb)          │
 -- │ S-F12   : n → Android + iOS Simulator app action menu                │
--- │ Note: terminals emit S-Fn as F(n+12): S-F1=F13 S-F12=F24 …           │
+-- │ F13     : n → focused Android app A/B debug menu                     │
+-- │ F14     : n → relaunch focused Android app                           │
+-- │ F15     : n → save Android screenshot and copy PNG                   │
+-- │ F16     : n → toggle Android screen recording                        │
+-- │ F17     : n → toggle focused Android app logcat                      │
+-- │ F18     : n → open focused Android app settings                      │
+-- │ F19     : n → force-stop focused Android app                         │
+-- │ Note: physical F13–F19 and Shift+F1–F7 have independent mappings.    │
 -- │ Commands without a key: :DiffviewCycleLayout (side-by-side ↔ stacked)│
 -- │                         :DiffviewShowFile (this buffer in Diffview)  │
 -- └─────────────────────────────────────────────────────────────────────┘
@@ -265,14 +272,12 @@ require("config.git_grep").setup()
 -- Register `:BeyondCompare` and bind it to Shift+F2: hand the two sides of the
 -- current diff (Diffview entry, or any plain diff split) to Beyond Compare,
 -- whose side-by-side rendering is much easier to read for large files.
--- Terminals emit shifted F2 as <F14>, so map both spellings.
 require("config.beyond_compare").setup()
 
 local function open_beyond_compare()
   require("config.beyond_compare").open()
 end
 map("n", "<S-F2>", open_beyond_compare, { desc = "Open diff in Beyond Compare" })
-map("n", "<F14>", open_beyond_compare, { desc = "Open diff in Beyond Compare" })
 
 -- A diff side worth landing on: a live window that is not showing the empty
 -- buffer diffview puts on the missing side of an added or deleted file. That
@@ -325,7 +330,6 @@ map("n", "<F3>", function()
 end, { desc = "Next Diff Hunk (Diffview)" })
 
 -- Shift+F3: jump to the next file entry in the Diffview (vs. next hunk on F3).
--- Terminals may emit shifted F3 as <F15>. Only meaningful inside a Diffview.
 -- The last file stays put and reports an error; it does not wrap to the first.
 local function index_of(list, item)
   for i, value in ipairs(list) do
@@ -384,15 +388,11 @@ local function next_diff_file()
   view:set_file(files[next_i], false, true)
 end
 map("n", "<S-F3>", next_diff_file, { desc = "Next File (Diffview)" })
-map("n", "<F15>", next_diff_file, { desc = "Next File (Diffview)" })
 
--- F5: pick a local branch (shell `lbr`) and check it out. Shift+F5 picks a
--- remote branch (shell `rbr`). Each row shows when that branch was last
--- committed and the commit message. The picker title, and the message after
--- checkout, show the HEAD branch name, such as foo. A detached checkout at
--- origin/foo is shown as foo. From insert, visual, or a terminal we first drop to normal
--- with <C-\><C-N>, then open the picker. Terminals emit Shift+F5 as <F17>.
--- A checkout that moves HEAD closes every open file.
+-- F5 picks a local branch (shell `lbr`) and checks it out. Shift+F5 picks a
+-- remote branch (shell `rbr`). Each picker row shows when that branch was last
+-- committed and the commit message. A checkout that moves HEAD closes every
+-- open file.
 local function switch_branch(remote)
   return function()
     local function open()
@@ -410,7 +410,6 @@ end
 
 map({ "n", "i", "v", "x", "s", "t" }, "<F5>", switch_branch(false), { desc = "Switch local git branch" })
 map({ "n", "i", "v", "x", "s", "t" }, "<S-F5>", switch_branch(true), { desc = "Switch remote git branch" })
-map({ "n", "i", "v", "x", "s", "t" }, "<F17>", switch_branch(true), { desc = "Switch remote git branch" })
 
 -- F6: :GitGrep — live grep over git-tracked files. Normal/insert/terminal/
 -- cmdline → empty prompt; visual/select → seeded with the selection (first
@@ -492,18 +491,14 @@ vim.keymap.set("n", "<S-F10>", clear_marks, { desc = "Clear all marks" })
 vim.keymap.set("n", "<F22>", clear_marks, { desc = "Clear all marks" })
 
 -- Shift+F4: toggle an Android Studio / JetBrains style "Annotate" panel — a
--- scroll-bound left split showing author + date for every line. Press q inside
--- the panel (or Shift+F4 again) to close it. Terminals emit shifted F4 as <F16>,
--- so map both spellings.
+-- scroll-bound left split showing author + date for every line.
 local function toggle_git_annotate()
   require("config.git_annotate").toggle()
 end
 map("n", "<S-F4>", toggle_git_annotate, { desc = "Toggle Git Annotate Panel" })
-map("n", "<F16>", toggle_git_annotate, { desc = "Toggle Git Annotate Panel" })
 
--- Shift+F1: toggle Diffview's file panel. Terminals emit shifted F1 as <F13>.
+-- Shift+F1: toggle Diffview's file panel.
 map("n", "<S-F1>", "<cmd>DiffviewToggleFiles<cr>", { desc = "Toggle Diffview File Panel" })
-map("n", "<F13>", "<cmd>DiffviewToggleFiles<cr>", { desc = "Toggle Diffview File Panel" })
 
 -- F7: grep across open buffers (like F6, but scoped to loaded buffers instead
 -- of git-tracked files). Normal → prompt for the search string; visual → grep

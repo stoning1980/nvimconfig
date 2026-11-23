@@ -73,10 +73,14 @@ end
 --- selection screen if multiple, error if none installed.
 ---@param serial string device serial
 ---@param callback fun(pkg: string)
-local function pick_installed(serial, callback)
+---@param on_cancel? fun()
+local function pick_installed(serial, callback, on_cancel)
   M.get_apps(serial, function(apps)
     if #apps == 0 then
       vim.notify("No TikTok-family app installed on device.", vim.log.levels.ERROR, { title = "AdbHelper" })
+      if on_cancel then
+        on_cancel()
+      end
       return
     end
     if #apps == 1 then
@@ -90,6 +94,8 @@ local function pick_installed(serial, callback)
     ui.select(items, { title = "Pick TikTok-family app" }, function(item)
       if item then
         callback(item.value)
+      elseif on_cancel then
+        on_cancel()
       end
     end)
   end)
@@ -101,10 +107,11 @@ end
 ---@param serial string device serial
 ---@param opts? { prefer_foreground?: boolean }
 ---@param callback fun(pkg: string)
-function M.pick_app(serial, opts, callback)
+---@param on_cancel? fun()
+function M.pick_app(serial, opts, callback, on_cancel)
   opts = opts or {}
   if not opts.prefer_foreground then
-    pick_installed(serial, callback)
+    pick_installed(serial, callback, on_cancel)
     return
   end
   M.get_foreground_app(serial, function(fg)
@@ -113,7 +120,7 @@ function M.pick_app(serial, opts, callback)
       callback(fg)
       return
     end
-    pick_installed(serial, callback)
+    pick_installed(serial, callback, on_cancel)
   end)
 end
 

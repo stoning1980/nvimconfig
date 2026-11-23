@@ -49,6 +49,23 @@ function handlers.clear(serial, pkg)
   end)
 end
 
+--- Open Android's application-details settings for the app.
+function handlers.settings(serial, pkg)
+  notify("Opening app settings for " .. pkg .. " ...")
+  run({
+    "adb",
+    "-s",
+    serial,
+    "shell",
+    "am",
+    "start",
+    "-a",
+    "android.settings.APPLICATION_DETAILS_SETTINGS",
+    "-d",
+    "package:" .. pkg,
+  })
+end
+
 --- Force-stop, then relaunch the app's launcher activity. Mirrors `droidre`.
 function handlers.relaunch(serial, pkg)
   local activity = apps.is_go(pkg) and "com.ss.android.ugc.aweme.main.homepage.MainActivity"
@@ -78,12 +95,12 @@ function handlers.relaunch(serial, pkg)
   end)
 end
 
--- A/B debug and relaunch target whatever is on screen when possible, so they
--- skip the app picker if the foreground app is a TikTok-family app.
-local PREFER_FOREGROUND = { ab = true, relaunch = true }
+-- Non-destructive focused-app actions and force-stop target whatever is on
+-- screen when possible, skipping the picker for a TikTok-family foreground app.
+local PREFER_FOREGROUND = { ab = true, kill = true, relaunch = true, settings = true }
 
 --- Run a named action: pick device -> resolve TikTok-family app -> execute.
----@param action "ab"|"kill"|"clear"|"relaunch"
+---@param action "ab"|"kill"|"clear"|"relaunch"|"settings"
 function M.run(action)
   local handler = handlers[action]
   if not handler then

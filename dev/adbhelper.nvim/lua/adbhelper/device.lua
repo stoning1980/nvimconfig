@@ -31,10 +31,14 @@ end
 
 --- Pick a device: auto-select if one, prompt if multiple, error if none.
 ---@param callback fun(serial: string)
-function M.pick_device(callback)
+---@param on_cancel? fun()
+function M.pick_device(callback, on_cancel)
   M.get_devices(function(devices)
     if #devices == 0 then
       vim.notify("No adb device connected. Run 'adb devices' to check.", vim.log.levels.ERROR, { title = "AdbHelper" })
+      if on_cancel then
+        on_cancel()
+      end
       return
     end
     if #devices == 1 then
@@ -44,6 +48,8 @@ function M.pick_device(callback)
     vim.ui.select(devices, { prompt = "Pick Android device:" }, function(choice)
       if choice then
         callback(choice)
+      elseif on_cancel then
+        on_cancel()
       end
     end)
   end)
