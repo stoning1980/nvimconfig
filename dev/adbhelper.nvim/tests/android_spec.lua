@@ -355,7 +355,7 @@ test("logcat opens only one device picker while startup is pending", function()
   end
 end)
 
-test("plugin maps only F18 and F19 to Android actions", function()
+test("plugin maps physical F18 and F19 while Herdr separates shifted keys", function()
   local spec = dofile(root .. "/lua/plugins/adb.lua")
   local commands = {
     "AdbDebugMenu",

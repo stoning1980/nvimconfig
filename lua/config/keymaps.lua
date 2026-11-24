@@ -14,9 +14,9 @@
 -- │ F5      : all modes → local branch, show HEAD, close session         │
 -- │ S-F5    : all modes → remote branch, show HEAD, close session        │
 -- │ F6      : n/i/t/c → :GitGrep (git-tracked) | v/s → grep selection    │
--- │ S-F6    : terminal may emit F18 → focused Android A/B debug menu     │
+-- │ S-F6    : Not mapped in Herdr (legacy terminals may emit F18)        │
 -- │ F7      : n → grep open buffers  |  v → grep selection in buffers    │
--- │ S-F7    : terminal may emit F19 → save/copy Android screenshot       │
+-- │ S-F7    : Not mapped in Herdr (legacy terminals may emit F19)        │
 -- │ F8      : n → review line | v → selection; submit one / pick many    │
 -- │ S-F8    : Not mapped.                                                │
 -- │ F9      : Not mapped.                                                │
@@ -27,7 +27,7 @@
 -- │ S-F11   : n/v/i → copy-path menu (abs / rel / name / ~)              │
 -- │ F12     : n → next WORD, else first | v → send, stays (adb)          │
 -- │ S-F12   : n → Android + iOS Simulator app action menu                │
--- │ F18     : n → focused Android app A/B debug menu                     │
+-- │ F18     : n → focused Android A/B debug menu (Herdr separates S-F6) │
 -- │ F19     : n → save Android screenshot and copy PNG                   │
 -- │ Note: terminals emit S-Fn as F(n+12): S-F1=F13, S-F12=F24, etc.      │
 -- │ Commands without a key: :DiffviewCycleLayout (side-by-side ↔ stacked)│

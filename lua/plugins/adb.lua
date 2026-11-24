@@ -26,10 +26,9 @@ return {
   -- and proxy off follow its app actions, and the menu marks which one is
   -- current. Terminals emit shifted F12 as <F24>, so both spellings are mapped.
   --
-  -- F18 opens the focused TikTok-family A/B debug menu; F19 saves/copies a
-  -- screenshot. The other Android actions stay available as commands. Many
-  -- terminals encode Shift+F6 and Shift+F7 as F18 and F19, so those shifted
-  -- combinations may invoke the same actions.
+  -- F18 opens the focused TikTok-family A/B debug menu and F19 saves/copies a
+  -- screenshot. Herdr's keys.json sends shifted function keys with explicit
+  -- Kitty modifiers, keeping Shift+F6 separate from physical F18.
   keys = {
     { "<F12>", ":<C-u>AdbSendText<cr>", mode = "v", desc = "Send selection to Android device" },
     { "<F12>", "<cmd>AdbSendWord<cr>", mode = "n", desc = "Send WORD, then next WORD or first WORD of the line" },

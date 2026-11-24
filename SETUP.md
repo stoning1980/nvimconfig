@@ -137,9 +137,11 @@ Setup notes:
 - **Kotlin LSP is disabled** on purpose (`lua/plugins/lsp.lua`) — `kotlin_language_server`
   chokes on large Android/Gradle monorepos. Current-file Kotlin symbols come from the
   Treesitter fallback in `lua/config/ts_symbols.lua`.
-- **Shifted function keys**: terminals emit `S-F1..S-F12` as `<F13>..<F24>`. This config maps
-  both spellings. On a keyboard with physical `F13+` keys, those physical keys will collide
-  with the shifted-function-key aliases — see the note in `lua/config/keymaps.lua`.
+- **Shifted function keys**: legacy terminals emit `S-F1..S-F12` as `<F13>..<F24>`, so this
+  config maps compatibility aliases where those shifted actions are used. Herdr's
+  `~/.config/herdr-app/keys.json` sends shifted function keys with explicit Kitty modifiers,
+  allowing physical F18/F19 to remain distinct from Shift+F6/Shift+F7. Other terminals may
+  still collapse those pairs.
 - **Enabled LazyVim extras** (`lazyvim.json`): `editor.outline`, `lang.java`, `lang.json`,
   `lang.kotlin`, `lang.markdown`, `lang.typescript`. Each may pull extra Mason tools.
 - After changing plugins, re-pin versions by committing the updated `lazy-lock.json`.
