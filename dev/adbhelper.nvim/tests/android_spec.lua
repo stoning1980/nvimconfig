@@ -355,43 +355,45 @@ test("logcat opens only one device picker while startup is pending", function()
   end
 end)
 
-test("plugin exposes all Android commands through F13-F19", function()
+test("plugin maps only F18 and F19 to Android actions", function()
   local spec = dofile(root .. "/lua/plugins/adb.lua")
-  local expected = {
-    ["<F13>"] = "<cmd>AdbDebugMenu<cr>",
-    ["<F14>"] = "<cmd>AdbRelaunchApp<cr>",
-    ["<F15>"] = "<cmd>AdbScreenshot<cr>",
-    ["<F16>"] = "<cmd>AdbRecordScreen<cr>",
-    ["<F17>"] = "<cmd>AdbLogcat<cr>",
-    ["<F18>"] = "<cmd>AdbAppSettings<cr>",
-    ["<F19>"] = "<cmd>AdbForceStop<cr>",
+  local commands = {
+    "AdbDebugMenu",
+    "AdbRelaunchApp",
+    "AdbScreenshot",
+    "AdbRecordScreen",
+    "AdbLogcat",
+    "AdbAppSettings",
+    "AdbForceStop",
   }
-  local shifted = {
-    ["<S-F1>"] = true,
-    ["<S-F2>"] = true,
-    ["<S-F3>"] = true,
-    ["<S-F4>"] = true,
-    ["<S-F5>"] = true,
-    ["<S-F6>"] = true,
-    ["<S-F7>"] = true,
+  local reserved = {
+    ["<F13>"] = true,
+    ["<F14>"] = true,
+    ["<F15>"] = true,
+    ["<F16>"] = true,
+    ["<F17>"] = true,
   }
-  local actual = {}
+  local expected_keys = {
+    ["<F18>"] = "<cmd>AdbDebugMenu<cr>",
+    ["<F19>"] = "<cmd>AdbScreenshot<cr>",
+  }
+  for key = 1, 7 do
+    reserved["<S-F" .. key .. ">"] = true
+  end
+  local actual_keys = {}
   for _, key in ipairs(spec.keys) do
-    assert(not shifted[key[1]], key[1] .. " must retain its non-Android behavior")
-    if expected[key[1]] then
-      actual[key[1]] = key[2]
-      eq(key.mode, "n", key[1] .. " should be Normal-mode only")
+    assert(not reserved[key[1]], key[1] .. " must remain available for the original Shift behavior")
+    if expected_keys[key[1]] then
+      actual_keys[key[1]] = key[2]
     end
   end
-  eq(actual, expected, "all seven physical function keys should invoke their Android commands")
-  for _, command in pairs(expected) do
-    local name = command:match("<cmd>(.-)<cr>")
+  eq(actual_keys, expected_keys, "F18 and F19 should expose the selected Android actions")
+  for _, name in ipairs(commands) do
     assert(vim.tbl_contains(spec.cmd, name), name .. " should lazy-load AdbHelper")
   end
 
   spec.config({}, {})
-  for _, command in pairs(expected) do
-    local name = command:match("<cmd>(.-)<cr>")
+  for _, name in ipairs(commands) do
     assert(vim.fn.exists(":" .. name) == 2, name .. " should be registered when AdbHelper loads")
   end
 end)

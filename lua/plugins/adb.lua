@@ -26,23 +26,17 @@ return {
   -- and proxy off follow its app actions, and the menu marks which one is
   -- current. Terminals emit shifted F12 as <F24>, so both spellings are mapped.
   --
-  -- Physical F13-F19 open A/B debug, relaunch the focused TikTok-family app,
-  -- save/copy a screenshot, toggle direct-to-Mac screen recording, toggle
-  -- focused-app logcat, open app settings, and force-stop the app. Shift+F1
-  -- through Shift+F7 keep their independent original mappings. Captures go to
-  -- ~/Desktop/screen-shot.
+  -- F18 opens the focused TikTok-family A/B debug menu; F19 saves/copies a
+  -- screenshot. The other Android actions stay available as commands. Many
+  -- terminals encode Shift+F6 and Shift+F7 as F18 and F19, so those shifted
+  -- combinations may invoke the same actions.
   keys = {
     { "<F12>", ":<C-u>AdbSendText<cr>", mode = "v", desc = "Send selection to Android device" },
     { "<F12>", "<cmd>AdbSendWord<cr>", mode = "n", desc = "Send WORD, then next WORD or first WORD of the line" },
     { "<S-F12>", "<cmd>AdbMenu<cr>", mode = "n", desc = "Android and iOS Simulator action menu" },
     { "<F24>", "<cmd>AdbMenu<cr>", mode = "n", desc = "Android and iOS Simulator action menu" },
-    { "<F13>", "<cmd>AdbDebugMenu<cr>", mode = "n", desc = "Open focused Android app A/B debug menu" },
-    { "<F14>", "<cmd>AdbRelaunchApp<cr>", mode = "n", desc = "Relaunch focused Android app" },
-    { "<F15>", "<cmd>AdbScreenshot<cr>", mode = "n", desc = "Save Android screenshot and copy it" },
-    { "<F16>", "<cmd>AdbRecordScreen<cr>", mode = "n", desc = "Toggle Android screen recording" },
-    { "<F17>", "<cmd>AdbLogcat<cr>", mode = "n", desc = "Toggle focused Android app logcat" },
-    { "<F18>", "<cmd>AdbAppSettings<cr>", mode = "n", desc = "Open focused Android app settings" },
-    { "<F19>", "<cmd>AdbForceStop<cr>", mode = "n", desc = "Force-stop focused Android app" },
+    { "<F18>", "<cmd>AdbDebugMenu<cr>", mode = "n", desc = "Open focused Android app A/B debug menu" },
+    { "<F19>", "<cmd>AdbScreenshot<cr>", mode = "n", desc = "Save Android screenshot and copy it" },
   },
   config = function(_, opts)
     local adb = require("adbhelper")

@@ -14,7 +14,9 @@
 -- │ F5      : all modes → local branch, show HEAD, close session         │
 -- │ S-F5    : all modes → remote branch, show HEAD, close session        │
 -- │ F6      : n/i/t/c → :GitGrep (git-tracked) | v/s → grep selection    │
+-- │ S-F6    : terminal may emit F18 → focused Android A/B debug menu     │
 -- │ F7      : n → grep open buffers  |  v → grep selection in buffers    │
+-- │ S-F7    : terminal may emit F19 → save/copy Android screenshot       │
 -- │ F8      : n → review line | v → selection; submit one / pick many    │
 -- │ S-F8    : Not mapped.                                                │
 -- │ F9      : Not mapped.                                                │
@@ -25,14 +27,9 @@
 -- │ S-F11   : n/v/i → copy-path menu (abs / rel / name / ~)              │
 -- │ F12     : n → next WORD, else first | v → send, stays (adb)          │
 -- │ S-F12   : n → Android + iOS Simulator app action menu                │
--- │ F13     : n → focused Android app A/B debug menu                     │
--- │ F14     : n → relaunch focused Android app                           │
--- │ F15     : n → save Android screenshot and copy PNG                   │
--- │ F16     : n → toggle Android screen recording                        │
--- │ F17     : n → toggle focused Android app logcat                      │
--- │ F18     : n → open focused Android app settings                      │
--- │ F19     : n → force-stop focused Android app                         │
--- │ Note: physical F13–F19 and Shift+F1–F7 have independent mappings.    │
+-- │ F18     : n → focused Android app A/B debug menu                     │
+-- │ F19     : n → save Android screenshot and copy PNG                   │
+-- │ Note: terminals emit S-Fn as F(n+12): S-F1=F13, S-F12=F24, etc.      │
 -- │ Commands without a key: :DiffviewCycleLayout (side-by-side ↔ stacked)│
 -- │                         :DiffviewShowFile (this buffer in Diffview)  │
 -- └─────────────────────────────────────────────────────────────────────┘
@@ -278,6 +275,7 @@ local function open_beyond_compare()
   require("config.beyond_compare").open()
 end
 map("n", "<S-F2>", open_beyond_compare, { desc = "Open diff in Beyond Compare" })
+map("n", "<F14>", open_beyond_compare, { desc = "Open diff in Beyond Compare" })
 
 -- A diff side worth landing on: a live window that is not showing the empty
 -- buffer diffview puts on the missing side of an added or deleted file. That
@@ -388,6 +386,7 @@ local function next_diff_file()
   view:set_file(files[next_i], false, true)
 end
 map("n", "<S-F3>", next_diff_file, { desc = "Next File (Diffview)" })
+map("n", "<F15>", next_diff_file, { desc = "Next File (Diffview)" })
 
 -- F5 picks a local branch (shell `lbr`) and checks it out. Shift+F5 picks a
 -- remote branch (shell `rbr`). Each picker row shows when that branch was last
@@ -410,6 +409,7 @@ end
 
 map({ "n", "i", "v", "x", "s", "t" }, "<F5>", switch_branch(false), { desc = "Switch local git branch" })
 map({ "n", "i", "v", "x", "s", "t" }, "<S-F5>", switch_branch(true), { desc = "Switch remote git branch" })
+map({ "n", "i", "v", "x", "s", "t" }, "<F17>", switch_branch(true), { desc = "Switch remote git branch" })
 
 -- F6: :GitGrep — live grep over git-tracked files. Normal/insert/terminal/
 -- cmdline → empty prompt; visual/select → seeded with the selection (first
@@ -496,9 +496,11 @@ local function toggle_git_annotate()
   require("config.git_annotate").toggle()
 end
 map("n", "<S-F4>", toggle_git_annotate, { desc = "Toggle Git Annotate Panel" })
+map("n", "<F16>", toggle_git_annotate, { desc = "Toggle Git Annotate Panel" })
 
 -- Shift+F1: toggle Diffview's file panel.
 map("n", "<S-F1>", "<cmd>DiffviewToggleFiles<cr>", { desc = "Toggle Diffview File Panel" })
+map("n", "<F13>", "<cmd>DiffviewToggleFiles<cr>", { desc = "Toggle Diffview File Panel" })
 
 -- F7: grep across open buffers (like F6, but scoped to loaded buffers instead
 -- of git-tracked files). Normal → prompt for the search string; visual → grep
