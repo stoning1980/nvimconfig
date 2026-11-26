@@ -6,9 +6,12 @@ function M.queue_lines(items)
   local lines = {}
   for index, item in ipairs(items) do
     local selection = item.selection
-    local location = selection.path .. ":" .. selection.start_line
-    if selection.end_line and selection.end_line ~= selection.start_line then
-      location = location .. "-" .. selection.end_line
+    local location = selection.path
+    if selection.selection_kind ~= "file" then
+      location = location .. ":" .. selection.start_line
+      if selection.end_line and selection.end_line ~= selection.start_line then
+        location = location .. "-" .. selection.end_line
+      end
     end
     lines[#lines + 1] = string.format("%d. %s — %s", index, location, (item.comment or ""):gsub("%s+", " "))
   end

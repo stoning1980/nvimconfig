@@ -11,6 +11,59 @@ local function location(selection)
 end
 
 ---@param selection table
+---@return string
+local function line_range(selection)
+  if selection.end_line and selection.end_line ~= selection.start_line then
+    return selection.start_line .. "-" .. selection.end_line
+  end
+  return tostring(selection.start_line)
+end
+
+---@param text string
+---@return string
+local function markdown_fence(text)
+  local longest = 0
+  for run in (text or ""):gmatch("`+") do
+    longest = math.max(longest, #run)
+  end
+  return string.rep("`", math.max(3, longest + 1))
+end
+
+---@param selection table
+---@param comment string
+---@return string
+local function project_review_prompt(selection, comment)
+  local text = selection.text or ""
+  local fence = markdown_fence(text)
+  local filetype = selection.filetype or "unknown"
+  local language = filetype ~= "unknown" and filetype:match("^[%w_+%-]+$") and filetype or ""
+  local path = selection.project_relative_path or selection.absolute_path
+  local parts = {
+    "Code context from Neovim",
+    selection.selection_kind == "file" and ("File: " .. path) or ("File: " .. path .. ":" .. line_range(selection)),
+  }
+  if selection.selection_kind == "file" then
+    vim.list_extend(parts, {
+      "",
+      "Comment:",
+      comment,
+    })
+    return table.concat(parts, "\n")
+  end
+  vim.list_extend(parts, {
+    "",
+    "Selected code:",
+    fence .. language,
+    text,
+    fence,
+    "",
+    "Comment:",
+    comment,
+  })
+  return table.concat(parts, "\n")
+end
+
+---@param selection table
 ---@param comment string
 ---@return string
 local function changed_review_prompt(selection, comment)
@@ -51,6 +104,9 @@ end
 function M.review_prompt(selection, comment)
   if selection.change then
     return changed_review_prompt(selection, comment)
+  end
+  if selection.context_kind == "project" then
+    return project_review_prompt(selection, comment)
   end
   return table.concat({
     "Review comment from Neovim",

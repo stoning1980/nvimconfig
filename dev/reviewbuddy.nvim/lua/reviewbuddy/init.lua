@@ -75,10 +75,13 @@ local function editor_selection(buf, visual)
     end_col = #(lines[#lines] or "")
     text = table.concat(lines, "\n")
   else
-    text = table.concat(
-      vim.api.nvim_buf_get_text(buf, start_line - 1, start_col, end_line - 1, end_col + (visual and 1 or 0), {}),
-      "\n"
-    )
+    local end_exclusive = end_col
+    if visual then
+      local end_text = vim.api.nvim_buf_get_lines(buf, end_line - 1, end_line, false)[1] or ""
+      end_exclusive = context.byte_after_char(end_text, end_col)
+    end
+    text =
+      table.concat(vim.api.nvim_buf_get_text(buf, start_line - 1, start_col, end_line - 1, end_exclusive, {}), "\n")
   end
   return {
     start_line = start_line,
@@ -126,17 +129,18 @@ function M.capture(visual)
     return nil
   end
   local path = vim.api.nvim_buf_get_name(buf)
-  local info = repo.for_path(path)
-  if not info then
-    notify("current file is not in a Git repository", vim.log.levels.WARN)
+  if path == "" then
+    notify("current buffer has no file path", vim.log.levels.WARN)
     return nil
   end
-  return context.selection(vim.tbl_extend("force", selection, {
-    repo_root = info.root,
-    path = path,
-    branch = info.branch,
-    revision = info.revision,
-  }))
+  return context.project_selection(
+    vim.tbl_extend("force", selection, {
+      path = path,
+    }),
+    config.options.project_root,
+    vim.bo[buf].filetype,
+    visual and "selection" or "file"
+  )
 end
 
 ---@param repo_root string
@@ -259,7 +263,7 @@ function M.setup(opts)
   config.setup(opts)
   vim.api.nvim_create_user_command("ReviewComment", function()
     M.comment(false)
-  end, { desc = "Queue current line review comment" })
+  end, { desc = "Queue current file context or Diffview line comment" })
   vim.api.nvim_create_user_command("ReviewCommentVisual", function()
     M.comment(true)
   end, { desc = "Queue visual review comment" })
@@ -275,7 +279,7 @@ function M.setup(opts)
   -- Compatibility aliases for the original Herdr-only commands.
   vim.api.nvim_create_user_command("HerdrComment", function()
     M.comment(false)
-  end, { desc = "Queue current line review comment" })
+  end, { desc = "Queue current file context or Diffview line comment" })
   vim.api.nvim_create_user_command("HerdrCommentVisual", function()
     M.comment(true)
   end, { desc = "Queue visual review comment" })

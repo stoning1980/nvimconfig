@@ -56,6 +56,12 @@ end
 
 test_extracts_only_visual_block_columns()
 
+local function test_includes_complete_multibyte_character_at_block_selection_endpoint()
+  assert_equal(context.block_text({ "a界b" }, 1, 1), "界")
+end
+
+test_includes_complete_multibyte_character_at_block_selection_endpoint()
+
 local function test_captures_first_live_visual_selection_before_marks_exist()
   local original_buf = vim.api.nvim_get_current_buf()
   local current_win = vim.api.nvim_get_current_win()
@@ -80,6 +86,27 @@ local function test_captures_first_live_visual_selection_before_marks_exist()
 end
 
 test_captures_first_live_visual_selection_before_marks_exist()
+
+local function test_captures_complete_multibyte_character_selection()
+  local original_buf = vim.api.nvim_get_current_buf()
+  local current_win = vim.api.nvim_get_current_win()
+  local buf = vim.api.nvim_create_buf(false, false)
+  vim.api.nvim_buf_set_name(buf, root .. "/tests/multibyte-selection-fixture.lua")
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "a界b" })
+  vim.api.nvim_win_set_buf(current_win, buf)
+  vim.api.nvim_win_set_cursor(current_win, { 1, 1 })
+  vim.cmd("normal! v")
+
+  local selected = reviewbuddy.capture(true)
+
+  vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "nx", false)
+  vim.api.nvim_win_set_buf(current_win, original_buf)
+  vim.api.nvim_buf_delete(buf, { force = true })
+  assert(selected, "expected multibyte project selection")
+  assert_equal(selected.text, "界")
+end
+
+test_captures_complete_multibyte_character_selection()
 
 local function test_normalizes_reverse_blockwise_selection_columns_independently()
   local original_buf = vim.api.nvim_get_current_buf()
@@ -566,6 +593,100 @@ local function test_captures_ordinary_file_in_extra_diffview_tab_split()
 end
 
 test_captures_ordinary_file_in_extra_diffview_tab_split()
+
+local function capture_project_file(project_root, file_path, lines, changed_cwd)
+  local original_buf = vim.api.nvim_get_current_buf()
+  local original_cwd = vim.fn.getcwd()
+  local original_repo_for_path = repo.for_path
+  local current_win = vim.api.nvim_get_current_win()
+  vim.fn.mkdir(vim.fs.dirname(file_path), "p")
+  vim.fn.writefile(lines, file_path)
+  local buf = vim.api.nvim_create_buf(false, false)
+  vim.api.nvim_buf_set_name(buf, file_path)
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].filetype = "lua"
+  vim.api.nvim_win_set_buf(current_win, buf)
+  vim.api.nvim_win_set_cursor(current_win, { 2, 0 })
+  config.setup({ project_root = project_root })
+  if changed_cwd then
+    vim.cmd.cd(changed_cwd)
+  end
+  repo.for_path = function()
+    error("ordinary project capture must not query Git")
+  end
+
+  local ok, selected = xpcall(function()
+    return reviewbuddy.capture(false)
+  end, debug.traceback)
+
+  repo.for_path = original_repo_for_path
+  vim.api.nvim_win_set_buf(current_win, original_buf)
+  vim.api.nvim_buf_delete(buf, { force = true })
+  vim.cmd.cd(original_cwd)
+  config.setup({})
+  if not ok then
+    error(selected)
+  end
+  return selected
+end
+
+local function test_captures_nested_repo_file_against_immutable_project_root_without_git()
+  local temp = vim.fn.tempname()
+  local project_root = temp .. "/project"
+  local nested_repo = project_root .. "/apps/video"
+  local changed_cwd = temp .. "/other"
+  vim.fn.mkdir(nested_repo .. "/.git", "p")
+  vim.fn.mkdir(changed_cwd, "p")
+  project_root = assert(vim.uv.fs_realpath(project_root))
+  nested_repo = project_root .. "/apps/video"
+
+  local selected = capture_project_file(
+    project_root,
+    nested_repo .. "/src/example.lua",
+    { "local first = 1", "return first" },
+    changed_cwd
+  )
+
+  vim.fn.delete(temp, "rf")
+  assert(selected, "expected project editor selection")
+  assert_equal(selected.context_kind, "project")
+  assert_equal(selected.repo_root, project_root)
+  assert_equal(selected.project_root, project_root)
+  assert_equal(selected.path, "apps/video/src/example.lua")
+  assert_equal(selected.project_relative_path, "apps/video/src/example.lua")
+  assert_equal(selected.absolute_path, project_root .. "/apps/video/src/example.lua")
+  assert_equal(selected.filetype, "lua")
+  assert_equal(selected.selection_kind, "file")
+  assert_equal(selected.start_line, nil)
+  assert_equal(selected.end_line, nil)
+  assert_equal(selected.text, nil)
+  assert_equal(selected.branch, nil)
+  assert_equal(selected.revision, nil)
+end
+
+test_captures_nested_repo_file_against_immutable_project_root_without_git()
+
+local function test_captures_file_outside_startup_project_root()
+  local temp = vim.fn.tempname()
+  local project_root = temp .. "/project"
+  vim.fn.mkdir(project_root, "p")
+  temp = assert(vim.uv.fs_realpath(temp))
+  project_root = temp .. "/project"
+  local outside_file = temp .. "/shared/example.lua"
+
+  local selected = capture_project_file(project_root, outside_file, { "local first = 1", "return first" })
+
+  vim.fn.delete(temp, "rf")
+  assert(selected, "expected outside project editor selection")
+  assert_equal(selected.context_kind, "project")
+  assert_equal(selected.repo_root, project_root)
+  assert_equal(selected.project_relative_path, nil)
+  assert_equal(selected.path, outside_file)
+  assert_equal(selected.absolute_path, outside_file)
+  assert_equal(selected.selection_kind, "file")
+end
+
+test_captures_file_outside_startup_project_root()
 
 local function test_merges_user_options_with_defaults()
   local options = config.setup({ input = { width = 0.75 } })
@@ -1916,6 +2037,96 @@ end
 
 test_builds_direct_review_prompt()
 
+local function test_builds_ai_friendly_project_editor_prompt()
+  local prompt = client.review_prompt({
+    context_kind = "project",
+    selection_kind = "selection",
+    repo_root = "/work/project",
+    project_root = "/work/project",
+    path = "apps/video/src/example.lua",
+    project_relative_path = "apps/video/src/example.lua",
+    absolute_path = "/work/project/apps/video/src/example.lua",
+    filetype = "lua",
+    start_line = 12,
+    end_line = 14,
+    text = "local fence = ```\nreturn fence",
+  }, "Explain whether this fence is safe.")
+
+  assert_equal(
+    prompt,
+    table.concat({
+      "Code context from Neovim",
+      "File: apps/video/src/example.lua:12-14",
+      "",
+      "Selected code:",
+      "````lua",
+      "local fence = ```",
+      "return fence",
+      "````",
+      "",
+      "Comment:",
+      "Explain whether this fence is safe.",
+    }, "\n")
+  )
+  assert(not prompt:find("Branch:", 1, true))
+  assert(not prompt:find("Revision:", 1, true))
+  assert(not prompt:find("Repository location:", 1, true))
+  assert(not prompt:find("Project root:", 1, true))
+  assert(not prompt:find("Absolute file:", 1, true))
+  assert(not prompt:find("Filetype:", 1, true))
+end
+
+test_builds_ai_friendly_project_editor_prompt()
+
+local function test_marks_project_editor_file_outside_project_root()
+  local prompt = client.review_prompt({
+    context_kind = "project",
+    selection_kind = "selection",
+    repo_root = "/work/project",
+    project_root = "/work/project",
+    path = "/shared/example.txt",
+    project_relative_path = nil,
+    absolute_path = "/shared/example.txt",
+    filetype = nil,
+    start_line = 3,
+    end_line = 3,
+    text = "outside",
+  }, "Review this external file.")
+
+  assert(prompt:find("File: /shared/example.txt:3", 1, true))
+  assert(not prompt:find("Project root:", 1, true))
+  assert(not prompt:find("outside project root", 1, true))
+end
+
+test_marks_project_editor_file_outside_project_root()
+
+local function test_builds_file_only_project_editor_prompt_without_code()
+  local prompt = client.review_prompt({
+    context_kind = "project",
+    selection_kind = "file",
+    repo_root = "/work/project",
+    project_root = "/work/project",
+    path = "apps/video/src/example.lua",
+    project_relative_path = "apps/video/src/example.lua",
+    absolute_path = "/work/project/apps/video/src/example.lua",
+    filetype = "lua",
+  }, "Review this file.")
+
+  assert_equal(
+    prompt,
+    table.concat({
+      "Code context from Neovim",
+      "File: apps/video/src/example.lua",
+      "",
+      "Comment:",
+      "Review this file.",
+    }, "\n")
+  )
+  assert(not prompt:find("Selected code:", 1, true))
+end
+
+test_builds_file_only_project_editor_prompt_without_code()
+
 local function changed_review(path, before, current)
   return {
     repo_root = "/work/app",
@@ -1949,6 +2160,8 @@ local function test_builds_before_and_current_review_prompt()
   assert(not prompt:find("Base:", 1, true))
   assert(not prompt:find("Target:", 1, true))
   assert(not prompt:find("Anchored on:", 1, true))
+  assert(not prompt:find("Context: project editor", 1, true))
+  assert(not prompt:find("Project root:", 1, true))
 end
 
 test_builds_before_and_current_review_prompt()
@@ -2321,6 +2534,49 @@ end
 
 test_keeps_review_comments_in_separate_repo_queues()
 
+local function test_project_queue_spans_nested_repos_but_stays_separate_from_diffview_queue()
+  local project_root = "/work/project"
+  local diffview_root = "/work/project/apps/video"
+  queue.clear(project_root)
+  queue.clear(diffview_root)
+  queue.add(
+    context.project_selection({
+      path = "/work/project/apps/video/src/video.lua",
+      start_line = 1,
+      text = "video()",
+    }, project_root, "lua"),
+    "Review video."
+  )
+  queue.add(
+    context.project_selection({
+      path = "/work/project/apps/live/src/live.lua",
+      start_line = 2,
+      text = "live()",
+    }, project_root, "lua"),
+    "Review live."
+  )
+  queue.add({
+    repo_root = diffview_root,
+    path = "src/video.lua",
+    start_line = 1,
+    text = "changed_video()",
+    branch = "feature/video",
+    revision = HEAD_SHA,
+    change = { note = "No changed hunk overlaps the selected current lines." },
+  }, "Review the diff.")
+
+  assert_equal(queue.count(project_root), 2)
+  assert_equal(queue.items(project_root)[1].selection.path, "apps/video/src/video.lua")
+  assert_equal(queue.items(project_root)[2].selection.path, "apps/live/src/live.lua")
+  assert_equal(queue.count(diffview_root), 1)
+  assert_equal(queue.items(diffview_root)[1].selection.context_kind, nil)
+
+  queue.clear(project_root)
+  queue.clear(diffview_root)
+end
+
+test_project_queue_spans_nested_repos_but_stays_separate_from_diffview_queue()
+
 local function test_clears_queue_only_after_successful_delivery()
   local root_path = "/work/submit"
   queue.clear(root_path)
@@ -2628,6 +2884,26 @@ local function test_formats_queued_comments_for_composer_list()
 end
 
 test_formats_queued_comments_for_composer_list()
+
+local function test_formats_file_only_project_context_without_line_number()
+  assert(vim.deep_equal(
+    input.queue_lines({
+      {
+        selection = {
+          context_kind = "project",
+          selection_kind = "file",
+          path = "apps/video/src/example.lua",
+        },
+        comment = "Review this file.",
+      },
+    }),
+    {
+      "1. apps/video/src/example.lua — Review this file.",
+    }
+  ))
+end
+
+test_formats_file_only_project_context_without_line_number()
 
 local function test_deletes_one_queued_comment_without_closing_composer()
   local root_path = "/work/delete-one"

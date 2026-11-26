@@ -10,7 +10,9 @@ cloned to `~/.config/nvim`.
 - Plugin versions are pinned in `lazy-lock.json`; enabled LazyVim extras are listed in `lazyvim.json`.
 - Two **in-repo custom plugins** under `dev/` (no separate install — they load from the repo):
   - `dev/adbhelper.nvim` — Android text input plus Android/iOS Simulator app and proxy actions. Keys: `<F12>` / `Shift+F12`.
-  - `dev/reviewbuddy.nvim` — routes Git-anchored review comments to agents in Neovim's current Herdr, Herdr app, or cmux workspace. Key: `<F8>`.
+  - `dev/reviewbuddy.nvim` — routes project-scoped editor context or Git-anchored
+    Diffview comments to agents in Neovim's current Herdr, Herdr app, or cmux
+    workspace. Key: `<F8>`.
 - **Leader key** is `,` (comma). Lua style: 2-space indent, 120 columns (`stylua.toml`).
 - Full custom keymap cheatsheet lives at the top of `lua/config/keymaps.lua`. Repo conventions are documented in `CLAUDE.md`.
 
