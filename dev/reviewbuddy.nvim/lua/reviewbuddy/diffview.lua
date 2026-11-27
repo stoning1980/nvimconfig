@@ -109,7 +109,8 @@ end
 ---@param end_line integer
 ---@return string|nil
 local function patch_for_selection(base_file, target_file, start_line, end_line)
-  local patch = vim.diff(file_text(base_file), file_text(target_file), {
+  local diff_fn = vim.text and vim.text.diff or vim.diff
+  local patch = diff_fn(file_text(base_file), file_text(target_file), {
     result_type = "unified",
     algorithm = "histogram",
     ctxlen = CONTEXT_LINES,

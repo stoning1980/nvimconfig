@@ -41,11 +41,15 @@ function M.get_items(buf)
     return nil
   end
 
-  local root = parser:parse()[1]:root()
+  local trees = parser:parse()
+  if not trees or not trees[1] then
+    return nil
+  end
+  local root = trees[1]:root()
   local file = vim.api.nvim_buf_get_name(buf)
   local items = {}
 
-  for _, match in query:iter_matches(root, buf, 0, -1, { all = true }) do
+  for _, match in query:iter_matches(root, buf, 0, -1) do
     local kind, name_node
     for id, nodes in pairs(match) do
       local cap = query.captures[id]

@@ -3061,9 +3061,10 @@ local function test_deletes_one_queued_comment_without_closing_composer()
     end,
   }
   vim.keymap.set = function(mode, lhs, rhs, options)
-    if type(rhs) == "function" and options and options.buffer then
-      mappings[options.buffer] = mappings[options.buffer] or {}
-      mappings[options.buffer][lhs] = rhs
+    local buf = options and (options.buf or options.buffer)
+    if type(rhs) == "function" and buf then
+      mappings[buf] = mappings[buf] or {}
+      mappings[buf][lhs] = rhs
     end
     original_keymap_set(mode, lhs, rhs, options)
   end

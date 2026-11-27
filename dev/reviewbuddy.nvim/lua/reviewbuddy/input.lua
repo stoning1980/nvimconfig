@@ -92,9 +92,9 @@ function M.open(options, title, actions)
     close()
     actions.on_submit(comment)
   end
-  vim.keymap.set({ "i", "n" }, "<CR>", submit, { buffer = win.buf, nowait = true })
-  vim.keymap.set({ "i", "n" }, "<C-s>", add, { buffer = win.buf, nowait = true })
-  vim.keymap.set("i", "<M-CR>", "<CR>", { buffer = win.buf, nowait = true, remap = false })
+  vim.keymap.set({ "i", "n" }, "<CR>", submit, { buf = win.buf, nowait = true })
+  vim.keymap.set({ "i", "n" }, "<C-s>", add, { buf = win.buf, nowait = true })
+  vim.keymap.set("i", "<M-CR>", "<CR>", { buf = win.buf, nowait = true, remap = false })
   vim.keymap.set({ "i", "n" }, "<C-d>", function()
     if not queue_win or not queue_win.win or not vim.api.nvim_win_is_valid(queue_win.win) then
       return
@@ -102,10 +102,10 @@ function M.open(options, title, actions)
     vim.cmd("stopinsert")
     vim.wo[queue_win.win].cursorline = true
     queue_win:focus()
-  end, { buffer = win.buf, nowait = true })
+  end, { buf = win.buf, nowait = true })
   vim.keymap.set({ "i", "n" }, "<Esc>", function()
     close()
-  end, { buffer = win.buf, nowait = true })
+  end, { buf = win.buf, nowait = true })
 
   local function render_queue()
     local lines = M.queue_lines(items)
@@ -144,8 +144,8 @@ function M.open(options, title, actions)
         win:set_title(composer_title())
         render_queue()
         focus_input()
-      end, { buffer = queue_win.buf, nowait = true })
-      vim.keymap.set("n", "<Esc>", focus_input, { buffer = queue_win.buf, nowait = true })
+      end, { buf = queue_win.buf, nowait = true })
+      vim.keymap.set("n", "<Esc>", focus_input, { buf = queue_win.buf, nowait = true })
     end
 
     vim.bo[queue_win.buf].modifiable = true

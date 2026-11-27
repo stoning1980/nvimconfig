@@ -213,7 +213,7 @@ local function stop_lsp()
   end
   for _, client in ipairs(get()) do
     -- One failing client must not skip the rest.
-    pcall(vim.lsp.stop_client, client.id, true)
+    pcall(client.stop, client, true)
   end
 end
 

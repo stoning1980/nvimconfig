@@ -257,7 +257,7 @@ local function build_panel(src_win, src_buf, out)
 
   state.win, state.buf, state.src_win, state.src_buf = win, buf, src_win, src_buf
 
-  vim.keymap.set("n", "q", M.close, { buffer = buf, nowait = true, desc = "Close git annotate" })
+  vim.keymap.set("n", "q", M.close, { buf = buf, nowait = true, desc = "Close git annotate" })
 
   vim.api.nvim_win_set_cursor(win, vim.api.nvim_win_get_cursor(src_win))
   vim.cmd("syncbind")

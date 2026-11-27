@@ -24,7 +24,7 @@ cloned to `~/.config/nvim`.
 
 | Tool | Why | Notes |
 |------|-----|-------|
-| **Neovim ≥ 0.11** | Config uses `vim.system`, `vim.fs.root`, `vim.fn.getregion` (0.10+) | Verify with `nvim --version` |
+| **Neovim ≥ 0.12** | Config uses Neovim 0.12 APIs (`vim.text.diff`, `nvim-treesitter` main) | Verify with `nvim --version` |
 | **git** | lazy.nvim bootstrap, Diffview, git pickers, `git blame` (F4) | |
 | **C compiler + make** | nvim-treesitter compiles parsers on install | `gcc`/`clang` + `make` |
 | **ripgrep** (`rg`) | Snacks grep / git-grep pickers (F5/F6) | |
@@ -69,7 +69,7 @@ Debian/Ubuntu:
 ```bash
 sudo apt update
 sudo apt install -y git ripgrep fd-find build-essential
-# Neovim: prefer a 0.11+ build (apt's may be old) — use the official appimage,
+# Neovim: prefer a 0.12+ build (apt's may be old) — use the official appimage,
 # the unstable PPA, or a release tarball. Verify: nvim --version
 # lazygit, stylua: install from their GitHub releases or your package manager.
 # nvm: https://github.com/nvm-sh/nvm  then: nvm install --lts

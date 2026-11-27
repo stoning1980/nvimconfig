@@ -9,7 +9,7 @@ vim.opt.relativenumber = true
 
 -- Remember 2000 previously edited files (v:oldfiles). The Recent Files picker
 -- reads that list. The other fields are Neovim's defaults.
-vim.opt.shada = "!,'2000,<50,s10,h"
+vim.opt.shada = "!,'2000,<50,s10,h,r/tmp/,r/private/"
 
 -- This tells the LazyVim utility to show the full relative path instead of shortening it
 -- vim.g.lazyvim_statusline_path = 3 -- 0: Name, 1: Relative (Pretty), 2: Full Relative, 3: Absolute
