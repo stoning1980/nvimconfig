@@ -9,6 +9,7 @@ return {
     "AdbSendText",
     "AdbSendWord",
     "AdbMenu",
+    "AdbScreenshotReview",
     "AdbDebugMenu",
     "AdbRelaunchApp",
     "AdbScreenshot",
@@ -25,6 +26,8 @@ return {
   -- Shift+F12 opens the Android + iOS Simulator action menu. Android proxy on
   -- and proxy off follow its app actions, and the menu marks which one is
   -- current. Terminals emit shifted F12 as <F24>, so both spellings are mapped.
+  -- F9 captures an Android or physical USB iOS screenshot, then opens a
+  -- ReviewBuddy comment popup and sends the saved PNG path to the selected agent.
   --
   -- F18 opens the focused TikTok-family A/B debug menu and F19 saves/copies a
   -- screenshot. Herdr's keys.json sends shifted function keys with explicit
@@ -34,6 +37,7 @@ return {
     { "<F12>", "<cmd>AdbSendWord<cr>", mode = "n", desc = "Send WORD, then next WORD or first WORD of the line" },
     { "<S-F12>", "<cmd>AdbMenu<cr>", mode = "n", desc = "Android and iOS Simulator action menu" },
     { "<F24>", "<cmd>AdbMenu<cr>", mode = "n", desc = "Android and iOS Simulator action menu" },
+    { "<F9>", "<cmd>AdbScreenshotReview<cr>", mode = "n", desc = "Capture device screenshot for agent review" },
     { "<F18>", "<cmd>AdbDebugMenu<cr>", mode = "n", desc = "Open focused Android app A/B debug menu" },
     { "<F19>", "<cmd>AdbScreenshot<cr>", mode = "n", desc = "Save Android screenshot and copy it" },
   },
@@ -52,6 +56,12 @@ return {
     vim.api.nvim_create_user_command("AdbMenu", function()
       adb.action_menu()
     end, { desc = "Android and iOS Simulator app actions" })
+    vim.api.nvim_create_user_command("AdbScreenshotReview", function()
+      capture.screenshot_for_review(function(image)
+        require("lazy").load({ plugins = { "reviewbuddy.nvim" } })
+        require("reviewbuddy").comment_image(image)
+      end)
+    end, { desc = "Capture Android or iOS screenshot and comment to an agent" })
     vim.api.nvim_create_user_command("AdbDebugMenu", function()
       actions.run("ab")
     end, { desc = "Open focused TikTok-family app A/B debug menu" })

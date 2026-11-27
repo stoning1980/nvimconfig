@@ -4,6 +4,7 @@ package.path = root .. "/dev/adbhelper.nvim/lua/?.lua;" .. root .. "/dev/adbhelp
 local actions = require("adbhelper.actions")
 local apps = require("adbhelper.apps")
 local device = require("adbhelper.device")
+local ui = require("adbhelper.ui")
 
 local function eq(actual, expected, message)
   assert(
@@ -355,9 +356,205 @@ test("logcat opens only one device picker while startup is pending", function()
   end
 end)
 
-test("plugin maps physical F18 and F19 while Herdr separates shifted keys", function()
+test("screenshot review discovers Android and USB iOS devices", function()
+  eq(
+    capture.screenshot_devices(
+      "List of devices attached\nandroid-123\tdevice\nandroid-offline\toffline\n",
+      "ios-456\nios-789\n"
+    ),
+    {
+      { text = "Android  ·  android-123", platform = "Android", device = "android-123" },
+      { text = "iOS  ·  ios-456", platform = "iOS", device = "ios-456" },
+      { text = "iOS  ·  ios-789", platform = "iOS", device = "ios-789" },
+    },
+    "only connected Android and USB iOS devices should be selectable"
+  )
+  eq(capture.ios_screenshot_command("/ios/python", "/tmp/IOSScreen.png"), {
+    "/ios/python",
+    "-m",
+    "pymobiledevice3",
+    "developer",
+    "core-device",
+    "screen-capture",
+    "screenshot",
+    "/tmp/IOSScreen.png",
+  }, "iOS screenshots should mirror iosshot")
+end)
+
+test("screenshot review captures the picked Android device and returns its PNG", function()
+  local original_system = vim.system
+  local original_select = ui.select
+  local original_notify = vim.notify
+  local original_home = vim.env.HOME
+  local original_date = os.date
+  local temp_home = vim.fn.tempname()
+  local commands = {}
+  local captured
+  vim.fn.mkdir(temp_home, "p")
+  temp_home = assert(vim.uv.fs_realpath(temp_home))
+  vim.env.HOME = temp_home
+  os.date = function()
+    return "1126-13h40m00s"
+  end
+  vim.notify = function() end
+  ui.select = function(items, _, callback)
+    eq(#items, 2, "combined picker should include Android and iOS")
+    callback(items[1])
+  end
+  vim.system = function(argv, _, callback)
+    commands[#commands + 1] = argv
+    local result = { code = 0, stdout = "", stderr = "" }
+    if argv[1] == "adb" and argv[2] == "devices" then
+      result.stdout = "List of devices attached\nandroid-123\tdevice\n"
+    elseif argv[1] == "idevice_id" then
+      result.stdout = "ios-456\n"
+    elseif argv[1] == "adb" and argv[4] == "pull" then
+      vim.fn.writefile({ "fake PNG" }, argv[6])
+    end
+    if callback then
+      callback(result)
+    end
+    return {}
+  end
+
+  local ok, err = xpcall(function()
+    capture.screenshot_for_review(function(image)
+      captured = image
+    end)
+    assert(
+      vim.wait(500, function()
+        return captured ~= nil
+      end),
+      "screenshot review workflow did not finish"
+    )
+    local output = temp_home .. "/Desktop/screen-shot/Screen_1126-13h40m00s.png"
+    eq(captured, {
+      platform = "Android",
+      device = "android-123",
+      path = output,
+    }, "capture callback should expose the saved Android screenshot")
+    eq(commands[3], {
+      "adb",
+      "-s",
+      "android-123",
+      "shell",
+      "screencap",
+      "-p",
+      "/sdcard/screencap.png",
+    }, "picked Android device should be captured")
+  end, debug.traceback)
+
+  vim.system = original_system
+  ui.select = original_select
+  vim.notify = original_notify
+  vim.env.HOME = original_home
+  os.date = original_date
+  vim.fn.delete(temp_home, "rf")
+  if not ok then
+    error(err)
+  end
+end)
+
+test("screenshot review keeps Android available when idevice_id is missing", function()
+  local original_system = vim.system
+  local original_notify = vim.notify
+  local original_home = vim.env.HOME
+  local original_date = os.date
+  local temp_home = vim.fn.tempname()
+  local captured
+  vim.fn.mkdir(temp_home, "p")
+  temp_home = assert(vim.uv.fs_realpath(temp_home))
+  vim.env.HOME = temp_home
+  os.date = function()
+    return "1126-13h41m00s"
+  end
+  vim.notify = function() end
+  vim.system = function(argv, _, callback)
+    if argv[1] == "idevice_id" then
+      error("ENOENT: idevice_id")
+    end
+    local result = { code = 0, stdout = "", stderr = "" }
+    if argv[1] == "adb" and argv[2] == "devices" then
+      result.stdout = "List of devices attached\nandroid-123\tdevice\n"
+    elseif argv[1] == "adb" and argv[4] == "pull" then
+      vim.fn.writefile({ "fake PNG" }, argv[6])
+    end
+    if callback then
+      callback(result)
+    end
+    return {}
+  end
+
+  local ok, err = xpcall(function()
+    capture.screenshot_for_review(function(image)
+      captured = image
+    end)
+    assert(
+      vim.wait(500, function()
+        return captured ~= nil
+      end),
+      "Android capture should survive a missing iOS tool"
+    )
+    eq(captured.platform, "Android", "Android device should still be captured")
+  end, debug.traceback)
+
+  vim.system = original_system
+  vim.notify = original_notify
+  vim.env.HOME = original_home
+  os.date = original_date
+  vim.fn.delete(temp_home, "rf")
+  if not ok then
+    error(err)
+  end
+end)
+
+test("screenshot review permits only one capture workflow at a time", function()
+  local original_system = vim.system
+  local original_notify = vim.notify
+  local callbacks = {}
+  local command_count = 0
+  local no_device_count = 0
+  vim.notify = function(message)
+    if message:find("No connected", 1, true) then
+      no_device_count = no_device_count + 1
+    end
+  end
+  vim.system = function(_, _, callback)
+    command_count = command_count + 1
+    callbacks[#callbacks + 1] = callback
+    return {}
+  end
+
+  local ok, err = xpcall(function()
+    capture.screenshot_for_review(function() end)
+    capture.screenshot_for_review(function() end)
+    eq(command_count, 2, "second invocation must not start another device discovery")
+    callbacks[1]({ code = 1, stdout = "", stderr = "no adb" })
+    callbacks[2]({ code = 1, stdout = "", stderr = "no idevice_id" })
+    assert(
+      vim.wait(500, function()
+        return no_device_count == 1
+      end),
+      "failed discovery did not finish"
+    )
+    capture.screenshot_for_review(function() end)
+    eq(command_count, 4, "capture guard should clear after discovery failure")
+    callbacks[3]({ code = 1, stdout = "", stderr = "no adb" })
+    callbacks[4]({ code = 1, stdout = "", stderr = "no idevice_id" })
+    vim.wait(50)
+  end, debug.traceback)
+
+  vim.system = original_system
+  vim.notify = original_notify
+  if not ok then
+    error(err)
+  end
+end)
+
+test("plugin maps F9, F18 and F19 while Herdr separates shifted keys", function()
   local spec = dofile(root .. "/lua/plugins/adb.lua")
   local commands = {
+    "AdbScreenshotReview",
     "AdbDebugMenu",
     "AdbRelaunchApp",
     "AdbScreenshot",
@@ -374,6 +571,7 @@ test("plugin maps physical F18 and F19 while Herdr separates shifted keys", func
     ["<F17>"] = true,
   }
   local expected_keys = {
+    ["<F9>"] = "<cmd>AdbScreenshotReview<cr>",
     ["<F18>"] = "<cmd>AdbDebugMenu<cr>",
     ["<F19>"] = "<cmd>AdbScreenshot<cr>",
   }
@@ -387,7 +585,7 @@ test("plugin maps physical F18 and F19 while Herdr separates shifted keys", func
       actual_keys[key[1]] = key[2]
     end
   end
-  eq(actual_keys, expected_keys, "F18 and F19 should expose the selected Android actions")
+  eq(actual_keys, expected_keys, "F9, F18 and F19 should expose the selected device actions")
   for _, name in ipairs(commands) do
     assert(vim.tbl_contains(spec.cmd, name), name .. " should lazy-load AdbHelper")
   end

@@ -44,6 +44,17 @@ The original `:HerdrComment`, `:HerdrCommentVisual`, `:HerdrSubmitQueue`, and
 `:HerdrPick`, `:HerdrRefresh`, and `:HerdrStatus` commands remain as
 compatibility aliases.
 
+F9 is provided by `adbhelper.nvim`: it discovers connected Android and physical
+USB iOS devices, captures a PNG under `~/Desktop/screen-shot`, resizes and
+copies it like the shell `shot` / `iosshot` helpers, then opens the same
+ReviewBuddy comment popup. The queued prompt tells the selected agent to open
+the absolute PNG path with its image tool. A failed or canceled delivery keeps
+the image context queued. Screenshot targets are workspace/space-wide rather
+than source-project-scoped, since device images are not tied to a repository.
+Android requires `adb`; iOS requires `idevice_id`, Developer Mode/developer
+image support, and `pymobiledevice3` from `IOS_RECORD_PYTHON`,
+`~/work/tools/iosrecord-venv/bin/python`, or `python3`.
+
 The comment float shows the current queue count and lists existing queued
 comments below the input. Press Enter to add its text and discover sessions
 from Neovim's current host and workspace, then choose a destination from the
@@ -86,6 +97,8 @@ chunked-paste fallback for larger ones.
 An ordinary-editor Normal-mode prompt uses one `File:` location—project-relative
 under the launch root, otherwise absolute—and sends no code snippet. Visual mode
 adds the selected line range and exact code in a filetype-tagged Markdown fence.
+A device-screenshot prompt includes platform, device ID, absolute PNG path, and
+an explicit instruction for the agent to inspect the image.
 A Diffview prompt retains its Git-root-relative path, branch, HEAD revision,
 selected code, and relevant before/current patch. Herdr receives the batch
 through `herdr agent prompt`; cmux either uses the selected agent's hook-backed

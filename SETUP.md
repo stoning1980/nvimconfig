@@ -9,7 +9,9 @@ cloned to `~/.config/nvim`.
 - **LazyVim** distribution on top of **lazy.nvim** (`init.lua` → `lua/config/lazy.lua`).
 - Plugin versions are pinned in `lazy-lock.json`; enabled LazyVim extras are listed in `lazyvim.json`.
 - Two **in-repo custom plugins** under `dev/` (no separate install — they load from the repo):
-  - `dev/adbhelper.nvim` — Android text input plus Android/iOS Simulator app and proxy actions. Keys: `<F12>` / `Shift+F12`.
+  - `dev/adbhelper.nvim` — Android text input plus device capture and Android/iOS
+    app/proxy actions. F9 captures an Android or USB iOS screenshot for an agent
+    comment; F12 sends text; Shift+F12 opens the action menu.
   - `dev/reviewbuddy.nvim` — routes project-scoped editor context or Git-anchored
     Diffview comments to agents in Neovim's current Herdr, Herdr app, or cmux
     workspace. Key: `<F8>`.
@@ -40,9 +42,13 @@ cloned to `~/.config/nvim`.
 
 ### Optional (mobile / ReviewBuddy workflow)
 
-- **adb** / Android SDK platform-tools — the mobile-engineering workflow this config targets.
+- **adb** / Android SDK platform-tools — Android text, capture, and app actions.
+- **libimobiledevice** (`idevice_id`) plus a Python with **pymobiledevice3** —
+  physical USB iOS capture on F9. Python resolution is `IOS_RECORD_PYTHON`,
+  then `~/work/tools/iosrecord-venv/bin/python`, then `python3`; the device
+  needs Developer Mode and a mounted developer image.
 - A supported ReviewBuddy host: Herdr, Herdr app/herdr-core, or cmux.
-- A supported coding agent running in the same host workspace and Git repository as Neovim.
+- A supported coding agent running in the same host workspace and review scope as Neovim.
 - Language toolchains as needed by the enabled extras: TypeScript/Node, Kotlin, etc.
 
 ### Install prerequisites

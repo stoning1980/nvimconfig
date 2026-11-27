@@ -66,6 +66,22 @@ end
 ---@param selection table
 ---@param comment string
 ---@return string
+local function image_review_prompt(selection, comment)
+  return table.concat({
+    "Device screenshot from Neovim",
+    "Platform: " .. (selection.platform or "unknown"),
+    "Device: " .. (selection.device or "unknown"),
+    "Image file: " .. selection.absolute_path,
+    "Open and inspect this PNG with your image/file tool.",
+    "",
+    "Comment:",
+    comment,
+  }, "\n")
+end
+
+---@param selection table
+---@param comment string
+---@return string
 local function changed_review_prompt(selection, comment)
   local change = selection.change
   local parts = {
@@ -107,6 +123,9 @@ function M.review_prompt(selection, comment)
   end
   if selection.context_kind == "project" then
     return project_review_prompt(selection, comment)
+  end
+  if selection.context_kind == "image" then
+    return image_review_prompt(selection, comment)
   end
   return table.concat({
     "Review comment from Neovim",

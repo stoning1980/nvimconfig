@@ -7,7 +7,7 @@ function M.queue_lines(items)
   for index, item in ipairs(items) do
     local selection = item.selection
     local location = selection.path
-    if selection.selection_kind ~= "file" then
+    if selection.selection_kind ~= "file" and selection.selection_kind ~= "image" then
       location = location .. ":" .. selection.start_line
       if selection.end_line and selection.end_line ~= selection.start_line then
         location = location .. "-" .. selection.end_line

@@ -17,9 +17,9 @@
 -- │ S-F6    : Not mapped in Herdr (legacy terminals may emit F18)        │
 -- │ F7      : n → grep open buffers  |  v → grep selection in buffers    │
 -- │ S-F7    : Not mapped in Herdr (legacy terminals may emit F19)        │
--- │ F8      : n → review line | v → selection; submit one / pick many    │
+-- │ F8      : n → current file | v → selection; Diffview keeps Git diff  │
 -- │ S-F8    : Not mapped.                                                │
--- │ F9      : Not mapped.                                                │
+-- │ F9      : n → capture Android/iOS screenshot, comment to agent       │
 -- │ S-F9    : Not mapped.                                                │
 -- │ F10     : n → mark word / v → mark selection (interestingwords)      │
 -- │ S-F10   : n → clear all interestingwords marks                       │

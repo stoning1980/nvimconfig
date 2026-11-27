@@ -189,7 +189,8 @@ end
 
 ---@param selection table
 local function comment(selection)
-  input.open(config.options.input, "Review comment", {
+  local title = selection.context_kind == "image" and "Device screenshot comment" or "Review comment"
+  input.open(config.options.input, title, {
     items = queue.items(selection.repo_root),
     on_add = function(comment_text)
       queue.add(selection, comment_text)
@@ -200,7 +201,7 @@ local function comment(selection)
       notify(string.format("review comment removed from queue (%d)", queue.count(selection.repo_root)))
     end,
     on_submit = function(comment_text)
-      if comment_text ~= "" then
+      if comment_text ~= "" or selection.context_kind == "image" then
         queue.add(selection, comment_text)
       end
       submit_queue(selection.repo_root)
@@ -214,6 +215,24 @@ function M.comment(visual)
   if selection then
     comment(selection)
   end
+end
+
+---@param image { platform: string, device: string, path: string }
+function M.comment_image(image)
+  local path = vim.uv.fs_realpath(image.path) or vim.fn.fnamemodify(image.path, ":p")
+  comment({
+    context_kind = "image",
+    selection_kind = "image",
+    -- Device screenshots are host-workspace context, not source-project
+    -- context. Filesystem root keeps cwd filtering while allowing any project
+    -- in the active Herdr/cmux workspace.
+    repo_root = "/",
+    project_root = config.options.project_root,
+    path = path,
+    absolute_path = path,
+    platform = image.platform,
+    device = image.device,
+  })
 end
 
 function M.submit_queue()

@@ -865,6 +865,24 @@ end
 
 test_matches_herdr_app_agents_in_same_space_and_repository()
 
+local function test_workspace_wide_screenshot_scope_accepts_agent_in_another_project()
+  local matched = app.targets({
+    {
+      address = "t1",
+      agent = "cursor",
+      foreground = { cwd = "/Users/test/another-project", name = "cursor-agent", pid = 101 },
+      labels = { ["herdr.space"] = "space-1" },
+      state = "live",
+      status = "idle",
+    },
+  }, "t2", "space-1", "/")
+
+  assert_equal(#matched, 1)
+  assert_equal(matched[1].id, "t1")
+end
+
+test_workspace_wide_screenshot_scope_accepts_agent_in_another_project()
+
 local function test_matches_unreported_cursor_in_herdr_app_space()
   local matched = app.targets({
     {
@@ -2127,6 +2145,34 @@ end
 
 test_builds_file_only_project_editor_prompt_without_code()
 
+local function test_builds_device_screenshot_prompt()
+  local prompt = client.review_prompt({
+    context_kind = "image",
+    selection_kind = "image",
+    repo_root = "/work/project",
+    path = "/Users/test/Desktop/screen-shot/IOSScreen_1126.png",
+    absolute_path = "/Users/test/Desktop/screen-shot/IOSScreen_1126.png",
+    platform = "iOS",
+    device = "device-123",
+  }, "Check the login error.")
+
+  assert_equal(
+    prompt,
+    table.concat({
+      "Device screenshot from Neovim",
+      "Platform: iOS",
+      "Device: device-123",
+      "Image file: /Users/test/Desktop/screen-shot/IOSScreen_1126.png",
+      "Open and inspect this PNG with your image/file tool.",
+      "",
+      "Comment:",
+      "Check the login error.",
+    }, "\n")
+  )
+end
+
+test_builds_device_screenshot_prompt()
+
 local function changed_review(path, before, current)
   return {
     repo_root = "/work/app",
@@ -2904,6 +2950,67 @@ local function test_formats_file_only_project_context_without_line_number()
 end
 
 test_formats_file_only_project_context_without_line_number()
+
+local function test_formats_device_screenshot_queue_item_without_line_number()
+  assert(vim.deep_equal(
+    input.queue_lines({
+      {
+        selection = {
+          context_kind = "image",
+          selection_kind = "image",
+          path = "/Users/test/Desktop/screen-shot/Screen_1126.png",
+        },
+        comment = "Check this screen.",
+      },
+    }),
+    {
+      "1. /Users/test/Desktop/screen-shot/Screen_1126.png — Check this screen.",
+    }
+  ))
+end
+
+test_formats_device_screenshot_queue_item_without_line_number()
+
+local function test_opens_screenshot_comment_popup_and_queues_image_context()
+  local root_path = "/work/screenshot-review"
+  local original_open = input.open
+  local opened
+  queue.clear(root_path)
+  queue.clear("/")
+  config.setup({ project_root = root_path })
+  input.open = function(options, title, actions)
+    opened = { options = options, title = title, actions = actions }
+  end
+
+  local ok, err = xpcall(function()
+    reviewbuddy.comment_image({
+      platform = "Android",
+      device = "android-123",
+      path = "/Users/test/Desktop/screen-shot/Screen_1126.png",
+    })
+    assert(opened, "expected screenshot comment popup")
+    assert_equal(opened.title, "Device screenshot comment")
+    opened.actions.on_add("Check this screen.")
+    assert_equal(queue.count("/"), 1)
+    local selection = queue.items("/")[1].selection
+    assert_equal(selection.context_kind, "image")
+    assert_equal(selection.selection_kind, "image")
+    assert_equal(selection.repo_root, "/")
+    assert_equal(selection.path, "/Users/test/Desktop/screen-shot/Screen_1126.png")
+    assert_equal(selection.platform, "Android")
+    assert_equal(selection.device, "android-123")
+  end, debug.traceback)
+
+  input.open = original_open
+  config.setup({})
+  queue.clear(root_path)
+  queue.clear("/")
+  if not ok then
+    error(err)
+  end
+end
+
+test_opens_screenshot_comment_popup_and_queues_image_context()
 
 local function test_deletes_one_queued_comment_without_closing_composer()
   local root_path = "/work/delete-one"
